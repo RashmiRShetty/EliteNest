@@ -1,0 +1,178 @@
+.seller-landing-container {
+  height: 100vh;
+  width: 100vw;
+  background: url("https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1400&q=80")
+    center/cover no-repeat;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  text-align: center;
+  color: white;
+  font-family: "Poppins", sans-serif;
+}
+
+/* When form is displayed, change layout to allow full height content */
+.seller-landing-container.form-view {
+  height: auto;
+  min-height: 100vh;
+  justify-content: flex-start;
+  padding-top: 100px; /* Account for navbar */
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.landing-title {
+  font-size: 3rem;
+  font-weight: 700;
+  z-index: 2;
+  animation: fadeInDown 1s ease-in-out;
+}
+
+.landing-subtitle {
+  font-size: 1.3rem;
+  width: 65%;
+  margin-top: 10px;
+  z-index: 2;
+  opacity: 0.9;
+  animation: fadeIn 1.5s ease-in-out;
+}
+
+.landing-subtitle span {
+  font-weight: 700;
+  color: #ffb84d;
+}
+
+.cta-buttons {
+  display: flex;
+  gap: 25px;
+  margin-top: 40px;
+  z-index: 2;
+  animation: fadeUp 1.9s ease-in-out;
+}
+
+.cta-btn {
+  padding: 14px 28px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #ff8800, #ffd24d);
+  border: none;
+  border-radius: 12px;
+  color: #1e293b;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.cta-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0px 0px 20px rgba(255, 190, 90, 0.6);
+}
+
+.landing-footer {
+  margin-top: 55px;
+  font-size: 1.05rem;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+  z-index: 2;
+}
+
+/* Animations */
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.brand-title {
+  position: absolute;
+  top: 20px;
+  left: 24px;
+  font-size: 2.8rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, #ff6b35, #f7931e, #ffc857);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-family: "Trebuchet MS", "Lucida Grande", sans-serif;
+  letter-spacing: 4px;
+  text-shadow: 0px 6px 14px rgba(255, 107, 53, 0.25);
+  filter: drop-shadow(0 0 14px rgba(255, 107, 53, 0.25));
+  cursor: pointer;
+  transition: transform 0.25s ease;
+  text-decoration: none;
+  z-index: 4;
+}
+.brand-title:hover {
+  transform: scale(1.05);
+}
+/* --- Seller Component Styles --- */
+
+/* Wrapper to structure the form view and the back button */
+.form-wrapper {
+    max-width: 1000px;
+    margin: 40px auto;
+    padding: 0 20px;
+    width: 90%;
+}
+
+/* Style for the back button */
+.back-to-options-btn {
+    background-color: #f8f9fa; /* Light background */
+    color: #007bff; /* Elite Nest blue text */
+    border: 1px solid #dee2e6;
+    padding: 10px 15px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: 500;
+    transition: background-color 0.3s, border-color 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.back-to-options-btn:hover {
+    background-color: #e2e6ea;
+    border-color: #dae0e5;
+}
+
+/* Update the main navbar to use space efficiently */
+.navbar {
+    display: flex; /* Assuming it's already a flex container */
+    justify-content: space-between; /* Pushes nav-left and nav-right to the ends */
+    align-items: center;
+    padding: 15px 30px; /* Adjust as needed */
+    /* ... other existing navbar styles ... */
+}
+
+/* Style for the new Sign Out Button */
+.signout-btn {
+    padding: 8px 15px;
+    background-color: #dc3545; /* A common color for alert/danger actions */
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: background-color 0.3s;
+}
+
+.signout-btn:hover {
+    background-color: #c82333;
+}

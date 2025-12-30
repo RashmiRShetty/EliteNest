@@ -1,0 +1,443 @@
+/* ABOUT PAGE HEADER - Matches site navbar */
+.about-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 40px;
+  background: linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.92));
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.about-brand-link {
+  text-decoration: none;
+}
+
+.about-brand-name {
+  font-family: "Trebuchet MS", "Lucida Grande", sans-serif;
+  font-size: 2.5rem;
+  font-weight: 900;
+  margin: 0;
+  letter-spacing: 3px;
+  background: linear-gradient(135deg, #ff6b35, #f7931e, #ffc857);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  transition: transform 0.22s cubic-bezier(.2,.9,.3,1), filter 0.22s ease;
+}
+
+.about-brand-link:hover .about-brand-name {
+  transform: translateY(-4px) scale(1.06);
+  filter: drop-shadow(0 6px 20px rgba(255, 107, 53, 0.35));
+}
+
+.about-nav-links {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.about-nav-link {
+  color: white;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 8px 14px;
+  border-radius: 6px;
+  transition: color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.about-nav-link:hover {
+  color: #ffc857;
+  transform: translateY(-3px);
+  background: rgba(255, 200, 87, 0.1);
+}
+
+.about-container {
+  font-family: "Poppins", sans-serif;
+  padding-bottom: 0;
+  background: #fff;
+  width: 100vw;
+}
+
+/* FULL-SCREEN HERO SECTION */
+.about-hero {
+  height: 100vh;
+  position: relative;
+  width: 100vw;
+  z-index: 1;
+  background: linear-gradient(135deg, rgba(15,23,42,0.4), rgba(30,41,59,0.5)), 
+              url("https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1600&q=80") center/cover no-repeat;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: white;
+  padding-top: 80px;
+}
+
+.about-hero h1 {
+  font-family: "Georgia", "Garamond", serif;
+  font-size: 4.5rem;
+  font-weight: 800;
+  margin: 0 0 20px 0;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  width: 100vw;
+  animation: hero-slide-down 800ms cubic-bezier(.2,.9,.3,1);
+}
+
+.about-hero p {
+  font-family: "Trebuchet MS", sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  width: 100vw;
+  letter-spacing: 1px;
+  background: linear-gradient(90deg, #ffc857, #ff6b35);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: hero-fade-up 800ms 200ms cubic-bezier(.2,.9,.3,1) both;
+  display: flex;
+  justify-content: center;
+  text-align: center;
+}
+
+@keyframes hero-slide-down {
+  from { transform: translateY(-30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes hero-fade-up {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* INTRO PARAGRAPH */
+.about-intro {
+  max-width: 900px;
+  margin: 60px auto;
+  padding: 0 30px;
+  font-size: 1.1rem;
+  line-height: 1.8;
+  text-align: center;
+  color: #374151;
+  font-weight: 500;
+  display: flex;
+  width: 100vw;
+}
+
+/* MISSION & VISION SECTION - FULL-SCREEN CREATIVE LAYOUT */
+.mv-section {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  min-height: 100vh;
+  padding: 0;
+  margin: 0;
+  width: 100vw;
+  justify-content: center;
+  align-items: center;
+}
+
+.mv-box {
+  position: relative;
+  padding: 40px;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  width: 350px;
+  height: 350px;
+  gap: 15px;
+  margin: 0 30px;
+}
+
+.mv-box:nth-child(1) {
+  order: 2;
+}
+
+.mv-box:nth-child(2) {
+  order: 1;
+}
+
+
+
+
+
+.mv-box:hover {
+  transform: none;
+  box-shadow: inset 0 0 60px rgba(0,0,0,0.3);
+}
+
+.mv-box h2 {
+  font-family: "Trebuchet MS", "Lucida Grande", sans-serif;
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin: 0;
+  background: linear-gradient(90deg, #ff6b35, #f7931e);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.mv-box p {
+  margin: 0;
+  background: linear-gradient(90deg, #ffc857, #ff6b35);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.6;
+  font-size: 0.9rem;
+  max-width: 300px;
+  font-weight: 500;
+}
+
+/* VALUES SECTION */
+.values-section {
+  text-align: center;
+  padding: 60px 30px;
+  background: linear-gradient(180deg, #f9fafb, #f3f4f6);
+  margin-top: 60px;
+}
+
+.values-section h2 {
+  font-family: "Georgia", "Garamond", serif;
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 50px;
+}
+
+.values-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 25px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.value-card {
+  background: white;
+  padding: 28px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+  border: 1px solid rgba(15,23,42,0.06);
+}
+
+.value-card:hover {
+  transform: translateY(-6px);
+  background: linear-gradient(135deg, rgba(255,107,53,0.05), rgba(255,200,87,0.05));
+  box-shadow: 0 8px 20px rgba(255,107,53,0.15);
+}
+
+/* CTA SECTION */
+.about-cta {
+  text-align: center;
+  padding: 60px 30px;
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  color: white;
+}
+
+.about-cta h2 {
+  font-family: "Georgia", "Garamond", serif;
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 30px;
+}
+
+.cta-btn {
+  background: linear-gradient(135deg, #ff6b35, #f7931e);
+  padding: 14px 32px;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  border: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 6px 20px rgba(255,107,53,0.3);
+}
+
+.cta-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(255,107,53,0.4);
+}
+
+/* FOOTER */
+.about-footer {
+  margin-top: 0;
+  text-align: center;
+  background: #0f172a;
+  padding: 28px;
+  color: #9ca3af;
+  font-size: 0.9rem;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .about-hero h1 {
+    font-size: 2.5rem;
+  }
+
+  .about-hero p {
+    font-size: 1.1rem;
+  }
+
+  .mv-section {
+    grid-template-columns: 1fr;
+    gap: 25px;
+    margin: 50px auto;
+  }
+
+  .values-section h2 {
+    font-size: 2rem;
+  }
+
+  .about-header {
+    padding: 12px 20px;
+  }
+
+  .about-nav-links {
+    gap: 10px;
+  }
+
+  .about-nav-link {
+    font-size: 0.85rem;
+    padding: 6px 10px;
+  }
+}
+
+.about-hero h1 {
+  font-size: 48px;
+  font-weight: bold;
+}
+
+.about-hero p {
+  font-size: 20px;
+  margin-top: 12px;
+}
+
+/* INTRO PARAGRAPH */
+.about-intro {
+  max-width: 900px;
+  margin: 40px auto;
+  font-size: 18px;
+  line-height: 30px;
+  text-align: center;
+  color: #444;
+}
+
+/* MISSION & VISION SECTION */
+.mv-section {
+  display: flex;
+  gap: 30px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 50px auto;
+  max-width: 1000px;
+}
+
+.mv-box {
+  width: 450px;
+  padding: 25px;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0px 6px 15px rgba(0, 0, 0, 0.08);
+}
+
+/* VALUES SECTION */
+.values-section {
+  text-align: center;
+  margin: 50px auto;
+}
+
+.values-grid {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.value-card {
+  background: #eef6ff;
+  padding: 18px;
+  width: 220px;
+  border-radius: 12px;
+  font-size: 18px;
+}
+
+/* TEAM SECTION */
+.team-section {
+  text-align: center;
+  padding: 50px;
+}
+
+.team-grid {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.team-card {
+  width: 240px;
+  padding: 20px;
+  background: white;
+  border-radius: 14px;
+  text-align: center;
+  box-shadow: 0px 6px 15px rgba(0,0,0,0.08);
+}
+
+.team-photo {
+  width: 120px;
+  height: 120px;
+  background: url("https://cdn-icons-png.flaticon.com/512/149/149071.png") 
+    center/cover no-repeat;
+  margin: auto;
+  border-radius: 50%;
+  margin-bottom: 12px;
+}
+
+/* CTA */
+.about-cta {
+  text-align: center;
+  margin-top: 50px;
+}
+
+.cta-btn {
+  background: #004aad;
+  padding: 14px 28px;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+/* FOOTER */
+.about-footer {
+  margin-top: 40px;
+  text-align: center;
+  background: #111;
+  padding: 20px;
+  color: white;
+}

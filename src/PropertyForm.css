@@ -1,0 +1,201 @@
+/* ================================
+   PREMIUM PROPERTY FORM UI
+   Elegant • Modern • SaaS-Grade
+   ================================ */
+
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1e40af;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --border: #e5e7eb;
+  --muted: #6b7280;
+  --bg: #f1f5f9;
+  --card: rgba(255, 255, 255, 0.95);
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: linear-gradient(180deg, #eef2ff, #f8fafc);
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+/* ===== CONTAINER ===== */
+.property-form-container {
+  max-width: 1000px;
+  margin: 60px auto;
+  padding: 42px;
+  background: var(--card);
+  backdrop-filter: blur(12px);
+  border-radius: var(--radius);
+  box-shadow:
+    0 25px 50px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ===== HEADER ===== */
+.form-header {
+  text-align: center;
+  font-size: 2.4rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 40px;
+}
+
+/* ===== FIELDSETS ===== */
+.property-form fieldset {
+  border: none;
+  margin-bottom: 36px;
+}
+
+.property-form legend {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 20px;
+}
+
+/* ===== INPUTS (GLOBAL – MATCHES JSX) ===== */
+.property-form input,
+.property-form select,
+.property-form textarea {
+  width: 100%;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  font-size: 0.95rem;
+  background: #fff;
+  transition: all 0.2s ease;
+}
+
+.property-form textarea {
+  resize: vertical;
+  min-height: 110px;
+}
+
+.property-form input:hover,
+.property-form select:hover,
+.property-form textarea:hover {
+  border-color: var(--primary);
+}
+
+.property-form input:focus,
+.property-form select:focus,
+.property-form textarea:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
+/* ===== FILE INPUT ===== */
+.property-form input[type="file"] {
+  padding: 16px;
+  border: 2px dashed var(--primary);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #eef2ff, #f8fafc);
+  cursor: pointer;
+}
+
+.property-form input[type="file"]:hover {
+  border-color: var(--primary-dark);
+}
+
+/* ===== IMAGE GRID ===== */
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.image-grid img {
+  width: 100%;
+  height: 110px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: #e5e7eb;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s ease;
+}
+
+.image-grid img:hover {
+  transform: scale(1.04);
+}
+
+/* ===== NAVIGATION ===== */
+.form-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 32px;
+}
+
+/* ===== BUTTONS ===== */
+.form-navigation button {
+  flex: 1;
+  padding: 16px;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Cancel */
+.form-navigation button[type="button"]:first-child {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.form-navigation button[type="button"]:first-child:hover {
+  background: #e5e7eb;
+}
+
+/* Next / Previous */
+.form-navigation button:not([type="submit"]):not(:first-child) {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: #fff;
+}
+
+.form-navigation button:not([type="submit"]):not(:first-child):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.35);
+}
+
+/* Submit */
+.form-navigation button[type="submit"] {
+  background: linear-gradient(135deg, var(--success), #22c55e);
+  color: #fff;
+}
+
+.form-navigation button[type="submit"]:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 30px rgba(22, 163, 74, 0.35);
+}
+
+.form-navigation button:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 640px) {
+  .property-form-container {
+    padding: 28px;
+  }
+
+  .form-header {
+    font-size: 2rem;
+  }
+
+  .form-navigation {
+    flex-direction: column;
+  }
+}

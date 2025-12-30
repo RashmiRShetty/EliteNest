@@ -1,0 +1,203 @@
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { supabase } from "./supabase.js";
+import { styles } from "./AuthStyles.js";
+import Alert from "./components/Alert.jsx";
+import GoogleIcon from "./components/GoogleIcon.jsx";
+
+export default function LoginPage() {
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (loginError) {
+        setError(loginError.message || "Login failed. Please check credentials.");
+      } else if (data?.session && data.user) {
+        setSuccess("Login successful! Redirecting...");
+        // Ensure session is stored before navigating
+        // Wait a moment for session to be persisted to localStorage
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Verify session is stored
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          // If user came from a property (e.g. /properties/5), take them back there.
+          // Otherwise, default to /properties
+          const from = location.state?.from || "/properties";
+          navigate(from, { replace: true });
+        } else {
+          setError("Session not established. Please try again.");
+        }
+      }
+    } catch (err) {
+      setError("Unexpected error. Check Supabase configuration.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError("");
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin + "/dashboard",
+        },
+      });
+
+      if (error) setError(error.message || "Google login failed.");
+    } catch (err) {
+      setError("Google sign-in failed. Check Supabase settings.");
+    }
+  };
+
+  return (
+    <div>
+
+      {/* 🔹 NAVBAR FROM HOMEPAGE ADDED HERE */}
+      <nav className="navbar">
+        <div className="nav-left">
+          <div className="navbar-brand">
+            <Link to="/">
+              <h1 className="brand-name">Elite Nest</h1>
+            </Link>
+          </div>
+
+          <div className="navbar-links">
+            <Link to="/" className="nav-link">Home</Link>
+            <a href="#properties" className="nav-link">Properties</a>
+            <Link to="/contact" className="nav-link">Contact</Link>
+            <Link to="/about" className="nav-link">About Us</Link>
+          </div>
+        </div>
+
+        <div className="nav-right">
+          <Link to="/loginpage" className="btn-login-nav">Login / SignUp</Link>
+        </div>
+      </nav>
+
+      {/* 🔷 LOGIN PAGE CONTENT */}
+
+      <div style={styles.container}>
+        <div style={styles.overlay}></div>
+        <div style={styles.box}>
+          
+          <h2 style={styles.title}>
+            Login to Elite Nest
+          </h2>
+
+          <Alert type="error" message={error} />
+          <Alert type="success" message={success} />
+
+          {/* GOOGLE LOGIN */}
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            style={{
+              width: "100%",
+              height: "45px",
+              borderRadius: "4px",
+              border: "1px solid #dadce0",
+              background: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              fontSize: "15px",
+              fontWeight: "500",
+              cursor: "pointer"
+            }}
+          >
+            <GoogleIcon size={20} />
+            Sign in with Google
+          </button>
+
+          <div style={styles.orDivider}>
+            <span style={styles.orSpan}>OR</span>
+          </div>
+
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <input
+              type="email"
+              name="email"
+              placeholder="Email Address"
+              value={formData.email}
+              onChange={handleChange}
+              required
+              style={styles.input}
+            />
+
+            <input
+              type="password"
+              name="password"
+              placeholder="Password"
+              value={formData.password}
+              onChange={handleChange}
+              required
+              style={styles.input}
+            />
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                alignItems: "center",
+                fontSize: "14px",
+                marginBottom: "15px",
+              }}
+            >
+              <label style={{ display: "flex", gap: "6px" }}>
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
+                Remember me
+              </label>
+
+              <Link to="/forgot-password" style={{ marginLeft: "auto", color: "#60a5fa" }}>
+                Forgot password?
+              </Link>
+            </div>
+
+            <button type="submit" style={styles.button} disabled={loading}>
+              {loading ? "Signing In..." : "Login with Password"}
+            </button>
+
+            <p style={styles.p}>
+              Don't have an account?{" "}
+              <Link to="/register" style={{ color: "#60a5fa" }}>
+                Register here
+              </Link>
+            </p>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
