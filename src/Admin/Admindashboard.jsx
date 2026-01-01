@@ -38,10 +38,10 @@ export default function AdminDashboard() {
         console.error("Error fetching property:", fetchError);
       }
 
-      const property = propertyData || updateData?.[0];
+      let property = propertyData;
 
       // Update status
-      const { data: updateData, error } = await supabase
+      const { data: updatedData, error } = await supabase
         .from("properties")
         .update({ status: newStatus })
         .eq("id", propertyId)
@@ -52,7 +52,11 @@ export default function AdminDashboard() {
         throw error;
       }
 
-      console.log("Status updated successfully:", updateData);
+      if (!property && updatedData && updatedData.length > 0) {
+        property = updatedData[0];
+      }
+
+      console.log("Status updated successfully:", updatedData);
 
       // Create notification for user when status is accepted
       if (newStatus === "accepted" && property) {
