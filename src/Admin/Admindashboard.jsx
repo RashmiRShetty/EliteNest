@@ -397,6 +397,10 @@ function ListingTab({ title, data, fetchData, updateStatus, loading, setEditingP
                 <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Area</th>
                 <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Bedrooms</th>
                 <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Bathrooms</th>
+                <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Parking</th>
+                <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Furnished</th>
+                <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Balcony</th>
+                <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Nearby</th>
                 <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Description</th>
                 <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Address</th>
                 <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>City</th>
@@ -420,6 +424,10 @@ function ListingTab({ title, data, fetchData, updateStatus, loading, setEditingP
                   <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{p.area}</td>
                   <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{p.bedrooms ?? "-"}</td>
                   <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{p.bathrooms ?? "-"}</td>
+                  <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{p.parking || "-"}</td>
+                  <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{p.furnished_status || "-"}</td>
+                  <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{p.balcony || "-"}</td>
+                  <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: 200 }}>{p.nearby_places || "-"}</td>
                   <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: 300 }}>{p.description}</td>
                   <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{p.address}</td>
                   <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{p.city}</td>
@@ -652,11 +660,26 @@ function EditPropertyModal({ property, onClose, onSave }) {
     contact_email: property.contact_email || "",
     deposit: property.deposit || "",
     min_duration: property.min_duration || "",
+    parking: property.parking || "",
+    furnished_status: property.furnished_status || "",
+    balcony: property.balcony || "",
+    nearby_places: property.nearby_places || "",
   });
   const [saving, setSaving] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    if (name === "price") {
+      const lt = property.property_listing_type;
+      if ((lt === "Rent" || lt === "Lease") && value.length > 8) {
+        alert("Maximum 8 digits allowed");
+        return;
+      }
+      if (lt === "Sell" && value.length > 9) {
+        alert("Maximum 9 digits allowed");
+        return;
+      }
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -682,6 +705,10 @@ function EditPropertyModal({ property, onClose, onSave }) {
           contact_email: formData.contact_email,
           deposit: formData.deposit || null,
           min_duration: formData.min_duration || null,
+          parking: formData.parking,
+          furnished_status: formData.furnished_status,
+          balcony: formData.balcony,
+          nearby_places: formData.nearby_places,
         })
         .eq("id", property.id);
 
@@ -730,6 +757,24 @@ function EditPropertyModal({ property, onClose, onSave }) {
                 <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Bathrooms</label>
                 <input type="number" name="bathrooms" value={formData.bathrooms} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
               </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+              <div>
+                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Parking</label>
+                <input type="text" name="parking" value={formData.parking} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Furnished</label>
+                <input type="text" name="furnished_status" value={formData.furnished_status} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Balcony</label>
+                <input type="text" name="balcony" value={formData.balcony} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
+              </div>
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Nearby Places</label>
+              <textarea name="nearby_places" value={formData.nearby_places} onChange={handleChange} rows="2" style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
             </div>
             <div>
               <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Address</label>
@@ -787,10 +832,17 @@ function PropertyModal({ property, onClose }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center" }}>
       <div style={{ background: "#fff", padding: 20, borderRadius: 8, maxWidth: "500px", width: "100%" }}>
         <h2>{property.title}</h2>
-        <p>Price: {property.price}</p>
-        <p>Location: {property.location}</p>
-        <p>Bedrooms: {property.bedrooms}</p>
-        <button onClick={onClose}>Close</button>
+        <p><strong>Type:</strong> {property.type}</p>
+        <p><strong>Category:</strong> {property.property_listing_type}</p>
+        <p><strong>Price:</strong> {property.price}</p>
+        <p><strong>Location:</strong> {property.address}, {property.city}</p>
+        <p><strong>Bedrooms:</strong> {property.bedrooms}</p>
+        <p><strong>Bathrooms:</strong> {property.bathrooms}</p>
+        <p><strong>Parking:</strong> {property.parking || "N/A"}</p>
+        <p><strong>Furnished:</strong> {property.furnished_status || "N/A"}</p>
+        <p><strong>Balcony:</strong> {property.balcony || "N/A"}</p>
+        <p><strong>Nearby:</strong> {property.nearby_places || "N/A"}</p>
+        <button onClick={onClose} style={{ marginTop: "20px", padding: "8px 16px", cursor: "pointer" }}>Close</button>
       </div>
     </div>
     );

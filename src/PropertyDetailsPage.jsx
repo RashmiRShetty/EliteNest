@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { fetchPropertyById } from "./utils/properties";
 import { supabase } from "./supabase";
-import { ArrowLeft, MapPin, CheckCircle, ShieldCheck, Home, Car, Building, Users, Calendar, DollarSign, CalendarCheck, X, Clock, Phone, Mail } from "lucide-react";
+import { ArrowLeft, MapPin, CheckCircle, ShieldCheck, Home, Car, Building, Users, Calendar, CalendarCheck, X, Clock, Phone, Mail } from "lucide-react";
 
 function PropertyDetailsPage() {
   const { propertyId, id } = useParams();
@@ -518,7 +518,7 @@ function PropertyDetailsPage() {
                 }}>
                   <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <DollarSign size={18} color="#1e40af" />
+                      <span style={{ fontSize: "18px", color: "#1e40af" }}>₹</span>
                       <strong>Rent/Price</strong>
                     </div>
                     <p style={{ margin: 0, color: "#1e40af", fontSize: "1.2rem", fontWeight: "bold" }}>
@@ -528,7 +528,7 @@ function PropertyDetailsPage() {
                   {property.deposit > 0 && (
                     <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                        <DollarSign size={18} color="#1e40af" />
+                        <span style={{ fontSize: "18px", color: "#1e40af" }}>₹</span>
                         <strong>Security Deposit</strong>
                       </div>
                       <p style={{ margin: 0, color: "#6b7280", fontSize: "1.1rem" }}>
