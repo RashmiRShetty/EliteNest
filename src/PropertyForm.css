@@ -199,3 +199,20 @@ body {
     flex-direction: column;
   }
 }
+
+/* ===== ERROR MESSAGES ===== */
+.error-message {
+  color: var(--danger);
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-top: 4px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.error-message::before {
+  content: "⚠️";
+  font-size: 0.75rem;
+}

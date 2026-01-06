@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { fetchPropertyById } from "./utils/properties";
 import { supabase } from "./supabase";
-import { ArrowLeft, MapPin, CheckCircle, ShieldCheck, Home, Car, Building, Users, Calendar, DollarSign, CalendarCheck, X, Clock, Phone } from "lucide-react";
+import { ArrowLeft, MapPin, CheckCircle, ShieldCheck, Home, Car, Building, Users, Calendar, DollarSign, CalendarCheck, X, Clock, Phone, Mail } from "lucide-react";
 
 function PropertyDetailsPage() {
   const { propertyId, id } = useParams();
@@ -16,7 +16,8 @@ function PropertyDetailsPage() {
   const [bookingForm, setBookingForm] = useState({
     mobileNumber: "",
     date: "",
-    time: ""
+    time: "",
+    email: ""
   });
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState("");
@@ -27,6 +28,9 @@ function PropertyDetailsPage() {
     // Get current user
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
+      if (user?.email) {
+        setBookingForm(prev => ({ ...prev, email: user.email }));
+      }
     });
 
     const loadProperty = async () => {
@@ -71,7 +75,7 @@ function PropertyDetailsPage() {
     setBookingLoading(true);
 
     // Validation
-    if (!bookingForm.mobileNumber || !bookingForm.date || !bookingForm.time) {
+    if (!bookingForm.mobileNumber || !bookingForm.date || !bookingForm.time || !bookingForm.email) {
       setBookingError("Please fill in all fields");
       setBookingLoading(false);
       return;
@@ -103,7 +107,7 @@ function PropertyDetailsPage() {
             property_id: property.id,
             property_title: property.title,
             user_id: user?.id || null,
-            user_email: user?.email || null,
+            user_email: bookingForm.email,
             mobile_number: bookingForm.mobileNumber,
             appointment_date: bookingForm.date,
             appointment_time: bookingForm.time,
@@ -123,7 +127,7 @@ function PropertyDetailsPage() {
               property_id: property.id,
               property_title: property.title,
               user_id: user?.id || null,
-              user_email: user?.email || null,
+              user_email: bookingForm.email,
               mobile_number: bookingForm.mobileNumber,
               appointment_date: bookingForm.date,
               appointment_time: bookingForm.time,
@@ -139,7 +143,7 @@ function PropertyDetailsPage() {
       }
 
       setBookingSuccess(true);
-      setBookingForm({ mobileNumber: "", date: "", time: "" });
+      setBookingForm({ mobileNumber: "", date: "", time: "", email: "" });
       
       // Close modal after 2 seconds
       setTimeout(() => {
@@ -712,6 +716,30 @@ function PropertyDetailsPage() {
                     {bookingError}
                   </div>
                 )}
+
+                <div style={{ marginBottom: "20px" }}>
+                  <label style={{ display: "block", marginBottom: "8px", color: "#374151", fontWeight: "500" }}>
+                    <Mail size={16} style={{ display: "inline", marginRight: "5px", verticalAlign: "middle" }} />
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={bookingForm.email}
+                    onChange={handleBookingInputChange}
+                    placeholder="Enter email address"
+                    required
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "8px",
+                      fontSize: "1rem",
+                      boxSizing: "border-box"
+                    }}
+                    disabled={bookingLoading}
+                  />
+                </div>
 
                 <div style={{ marginBottom: "20px" }}>
                   <label style={{ display: "block", marginBottom: "8px", color: "#374151", fontWeight: "500" }}>
