@@ -2,7 +2,9 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import "./PropertyForm.css";
 import { useLocation } from "react-router-dom";
-import { CheckCircle, Home, User, Phone, Mail, MapPin, UploadCloud, ArrowRight, ArrowLeft, Building, DollarSign, ShieldCheck, CalendarCheck, Wrench, BadgeCheck, Star } from "lucide-react";
+import { CheckCircle, Home, User, Phone, Mail, MapPin, UploadCloud, ArrowRight, ArrowLeft, Building, DollarSign } from "lucide-react";
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const PropertyForm = () => {
   const location = useLocation();
@@ -36,29 +38,101 @@ const PropertyForm = () => {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [activeField, setActiveField] = useState(null); // Track which input field is active
-  const [testimonialIndex, setTestimonialIndex] = useState(0);
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null);
 
   const isRentOrLease = formData.listingType === "Rent" || formData.listingType === "Lease";
-  const testimonials = [
-    {
-      name: "Nidhi Sati",
-      city: "Delhi",
-      quote:
-        "Once I got admission into Delhi University, finding a room was challenging. Nestaway helped me discover premium options with good maintenance and ventilation. My experience has been really good.",
-    },
-    {
-      name: "Prerna Jha",
-      city: "Bengaluru",
-      quote:
-        "Smooth process and verified listings. The team was responsive and the property matched the description perfectly. Highly recommend for first-time renters.",
-    },
-    {
-      name: "Aarav Mehta",
-      city: "Mumbai",
-      quote:
-        "Professional service and on-time support. The rental formalities were quick and transparent. I’m impressed with their expertise.",
-    },
-  ];
+
+  // Load Leaflet (no API key needed)
+  useEffect(() => {
+    // Leaflet is already imported, no need to load external scripts
+    console.log('Leaflet ready for use');
+  }, []);
+
+  // Get current location
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          
+          // Use Nominatim for reverse geocoding (free service)
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+            .then(response => response.json())
+            .then(data => {
+              if (data && data.display_name) {
+                const placeName = data.display_name;
+                setSelectedLocation(placeName);
+                setFormData(prev => ({
+                  ...prev,
+                  address: placeName
+                }));
+              } else {
+                // Fallback to coordinates if geocoding fails
+                const locationText = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                setSelectedLocation(locationText);
+                setFormData(prev => ({
+                  ...prev,
+                  address: locationText
+                }));
+              }
+            })
+            .catch(error => {
+              console.error('Reverse geocoding error:', error);
+              // Fallback to coordinates
+              const locationText = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+              setSelectedLocation(locationText);
+              setFormData(prev => ({
+                ...prev,
+                address: locationText
+              }));
+            });
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          alert('Unable to get your current location.');
+        }
+      );
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
+  };
+
+  // Handle map location selection
+  const handleMapLocationSelect = (lat, lng) => {
+    // Use Nominatim for reverse geocoding
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data && data.display_name) {
+          const placeName = data.display_name;
+          setSelectedLocation(placeName);
+          setFormData(prev => ({
+            ...prev,
+            address: placeName
+          }));
+        } else {
+          // Fallback to coordinates if geocoding fails
+          const locationText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+          setSelectedLocation(locationText);
+          setFormData(prev => ({
+            ...prev,
+            address: locationText
+          }));
+        }
+      })
+      .catch(error => {
+        console.error('Reverse geocoding error:', error);
+        // Fallback to coordinates
+        const locationText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        setSelectedLocation(locationText);
+        setFormData(prev => ({
+          ...prev,
+          address: locationText
+        }));
+      });
+    setShowMapModal(false);
+  };
 
   // Auto-fill logged-in user's email
   useEffect(() => {
@@ -214,6 +288,36 @@ const PropertyForm = () => {
 
   const handlePrevious = () => setStep((prev) => prev - 1);
 
+  // Clear form function
+  const clearForm = () => {
+    setFormData({
+      listingType: initialListingType,
+      title: "",
+      type: "Apartment",
+      area: "",
+      bedrooms: "",
+      bathrooms: "",
+      address: "",
+      city: "",
+      price: "",
+      description: "",
+      contactName: "",
+      contactEmail: "",
+      contactPhone: "",
+      deposit: "",
+      minDuration: "",
+      parking: "No",
+      furnished: "Unfurnished",
+      balcony: "No",
+      nearby: "",
+    });
+    setPropertyImages([]);
+    setImagePreviews([]);
+    setSelectedLocation(null);
+    setStep(1);
+    setErrors({});
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateStep(3)) return;
@@ -263,7 +367,7 @@ const PropertyForm = () => {
 
       if (insertError) throw insertError;
       alert("✅ Property listed successfully!");
-      // Reset logic or redirect could go here
+      clearForm(); // Clear form after successful submission
     } catch (error) {
       console.error(error);
       alert(`❌ Failed: ${error.message}`);
@@ -296,8 +400,71 @@ const PropertyForm = () => {
     );
   };
 
+  // React-Leaflet Map Modal Component
+  const MapModalContent = () => {
+    const [position, setPosition] = useState({ lat: 12.9716, lng: 77.5946 });
+
+    const handleMapClick = (event) => {
+      const newPos = event.latlng;
+      setPosition(newPos);
+      handleMapLocationSelect(newPos.lat, newPos.lng);
+    };
+
+    const handleMarkerDrag = (event) => {
+      const newPos = event.target.getLatLng();
+      setPosition(newPos);
+      handleMapLocationSelect(newPos.lat, newPos.lng);
+    };
+
+    if (!showMapModal) return null;
+
+    return (
+      <div className="map-modal-overlay">
+        <div className="map-modal">
+          <div className="map-modal-header">
+            <h3>Select Location on Map</h3>
+            <button onClick={() => setShowMapModal(false)} className="close-btn">×</button>
+          </div>
+          <div 
+            style={{ 
+              height: '400px', 
+              width: '100%',
+              backgroundColor: '#f0f0f0',
+              borderRadius: '8px',
+              zIndex: 1
+            }}
+          >
+            <MapContainer 
+              center={[position.lat, position.lng]} 
+              zoom={15} 
+              style={{ height: '100%', width: '100%' }}
+              whenClicked={handleMapClick}
+            >
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              />
+              <Marker 
+                position={[position.lat, position.lng]} 
+                draggable={true}
+                eventHandlers={{
+                  dragend: handleMarkerDrag
+                }}
+              />
+            </MapContainer>
+          </div>
+          <div className="map-modal-footer">
+            <button onClick={() => setShowMapModal(false)} className="btn-secondary">Cancel</button>
+            <button onClick={() => setShowMapModal(false)} className="btn-primary">Confirm Location</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const MapModal = MapModalContent;
+
   return (
-    <>
     <div className="property-form-container">
       {/* LEFT SIDE - MARKETING */}
       <div className="form-left-section">
@@ -520,16 +687,41 @@ const PropertyForm = () => {
               <h3 className="step-title">Location & Pricing</h3>
 
               <div className="form-group">
-                <label>Address *</label>
-                <div className="input-wrapper">
-                  <MapPin size={18} className="input-icon" />
-                  <input
-                    type="text"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                    placeholder="House No, Street, Area"
-                  />
+                <label>Location *</label>
+                <div className="location-field-wrapper">
+                  <div className="input-wrapper">
+                    <MapPin size={18} className="input-icon" />
+                    <input
+                      type="text"
+                      name="address"
+                      value={selectedLocation || formData.address}
+                      onChange={handleChange}
+                      placeholder="Selected location will appear here"
+                      readOnly
+                      className="location-input"
+                    />
+                  </div>
+                  <div className="location-buttons">
+                    <button 
+                      type="button" 
+                      onClick={getCurrentLocation}
+                      className="location-option-btn current-btn"
+                    >
+                      📍 Current Location
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => setShowMapModal(true)}
+                      className="location-option-btn map-btn"
+                    >
+                      🗺️ Select on Map
+                    </button>
+                  </div>
+                  {selectedLocation && (
+                    <div className="selected-location-display">
+                      <span className="location-text">📍 {selectedLocation}</span>
+                    </div>
+                  )}
                 </div>
                 {errors.address && <span className="error-text">{errors.address}</span>}
               </div>
@@ -644,65 +836,9 @@ const PropertyForm = () => {
           </div>
         </form>
       </div>
-      <div className="floating-cta">
-        <a href="/properties" className="floating-cta-button">Find Your Perfect Home</a>
-      </div>
+      
+      <MapModal />
     </div>
-    <div className="company-bottom-section">
-      <div className="features-row">
-        <div className="feature-card">
-          <div className="feature-icon"><ShieldCheck size={28} /></div>
-          <div className="feature-title">KYC-Verified Tenants</div>
-          <div className="feature-desc">Thorough KYC & verification ensures quality tenants for your property.</div>
-        </div>
-        <div className="feature-card">
-          <div className="feature-icon"><CalendarCheck size={28} /></div>
-          <div className="feature-title">On-time Rent Collection</div>
-          <div className="feature-desc">Hassle-free monthly collections with timely reminders and tracking.</div>
-        </div>
-        <div className="feature-card">
-          <div className="feature-icon"><BadgeCheck size={28} /></div>
-          <div className="feature-title">Unparalleled Expertise</div>
-          <div className="feature-desc">8+ years in property management, overseeing transactions worth 2000+ crores.</div>
-        </div>
-        <div className="feature-card">
-          <div className="feature-icon"><Wrench size={28} /></div>
-          <div className="feature-title">Prompt Maintenance</div>
-          <div className="feature-desc">Regular inspections and on-demand services to keep spaces spick and span.</div>
-        </div>
-      </div>
-      <div className="testimonials-section">
-        <h2 className="testimonials-title">Our Happy Customers</h2>
-        <div className="testimonials-wrapper">
-          <button
-            type="button"
-            className="testimonial-nav"
-            onClick={() => setTestimonialIndex((testimonialIndex - 1 + testimonials.length) % testimonials.length)}
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div className="testimonial-card">
-            <div className="testimonial-header">
-              <div className="avatar">{testimonials[testimonialIndex].name.charAt(0)}</div>
-              <div className="person">
-                <div className="name">{testimonials[testimonialIndex].name}</div>
-                <div className="city">{testimonials[testimonialIndex].city}</div>
-              </div>
-              <div className="rating"><Star size={16} /><Star size={16} /><Star size={16} /><Star size={16} /><Star size={16} /></div>
-            </div>
-            <div className="quote">“ {testimonials[testimonialIndex].quote} ”</div>
-          </div>
-          <button
-            type="button"
-            className="testimonial-nav"
-            onClick={() => setTestimonialIndex((testimonialIndex + 1) % testimonials.length)}
-          >
-            <ArrowRight size={18} />
-          </button>
-        </div>
-      </div>
-    </div>
-    </>
   );
 };
 

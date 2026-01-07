@@ -263,6 +263,29 @@ function PropertyDetailsPage() {
                   <p style={{ display: "flex", alignItems: "center", gap: "5px", color: "#6b7280", margin: 0 }}>
                     <MapPin size={18} /> {property.address || property.location}
                   </p>
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <button 
+                      onClick={() => {
+                        const destinationLat = (property.lat && !isNaN(property.lat)) ? property.lat : 12.9762;
+                        const destinationLng = (property.lng && !isNaN(property.lng)) ? property.lng : 77.6033;
+                        const destination = `${destinationLat},${destinationLng}`;
+                        const url = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
+                        window.open(url, '_blank');
+                      }}
+                      style={{
+                        padding: "8px 16px",
+                        backgroundColor: "#4285f4",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "500"
+                      }}
+                    >
+                      🧭 Get Directions
+                    </button>
+                  </div>
                   {property.verified && (
                     <span style={{ color: "#059669", display: "flex", alignItems: "center", gap: "4px", fontSize: "0.9rem", fontWeight: "bold" }}>
                       <ShieldCheck size={18} /> Verified Property
