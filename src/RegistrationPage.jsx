@@ -5,6 +5,7 @@ import { supabase } from "./supabase.js";
 import { styles } from "./AuthStyles.js";
 import Alert from "./components/Alert.jsx";
 import PasswordStrengthBar from "./components/PasswordStrengthBar.jsx";
+import "./Dashboard.css";
 
 // --------------------------------------------
 // STEP COMPONENTS (memoized to prevent remount)
@@ -244,29 +245,25 @@ export default function RegistrationPage() {
   // --------------------------------------------
   return (
     <div>
-      {/* NAVBAR */}
-      <nav className="navbar">
-        <div className="nav-left">
-          <div className="navbar-brand">
-            <Link to="/">
-              <h1 className="brand-name">Elite Nest</h1>
-            </Link>
-          </div>
-
-          <div className="navbar-links">
-            <Link to="/" className="nav-link">Home</Link>
-            <a href="#properties" className="nav-link">Properties</a>
-            <Link to="/contact" className="nav-link">Contact</Link>
-            <Link to="/about" className="nav-link">About Us</Link>
-          </div>
-        </div>
-
-        <div className="nav-right">
-          <Link to="/loginpage" className="btn-login-nav">
-            Login / SignUp
+      {/* 🔹 NEW DASHBOARD HEADER */}
+      <header className="top-header" style={{ position: 'absolute', width: '100%', background: '#000000', zIndex: 10 }}>
+        <div className="header-left">
+          <Link to="/" className="header-brand">Elite Nest</Link>
+          <nav className="header-links">
+            <Link to="/" className="header-link">Home</Link>
+            <Link to="/properties" className="header-link">Properties</Link>
+            <Link to="/contact" className="header-link">Contact</Link>
+            <Link to="/about" className="header-link">About Us</Link>
+          </nav>
+        </div>       
+        <div className="header-actions">
+          <Link to="/loginpage" style={{ textDecoration: 'none' }}>
+            <button className="promo-btn" style={{ padding: '8px 20px', fontSize: '14px' }}>
+              Login
+            </button>
           </Link>
         </div>
-      </nav>
+      </header>
 
       {/* FORM WRAPPER */}
       <div style={styles.container}>

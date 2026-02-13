@@ -50,6 +50,27 @@ function getCoordinatesForAddress(address, city) {
   return { lat: 12.9762, lng: 77.6033 };
 }
 
+// Helper to safely parse image arrays/strings
+export const getArray = (val) => {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    // Try JSON parse
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {
+      // Ignore error
+    }
+    // Try postgres array syntax {url1,url2}
+    if (val.startsWith('{') && val.endsWith('}')) {
+      return val.slice(1, -1).split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+    }
+    // Assume single URL
+    if (val.startsWith('http')) return [val];
+  }
+  return [];
+};
+
 /**
  * Fetch all properties from Supabase
  * Maps database fields to the format expected by the frontend
@@ -57,7 +78,7 @@ function getCoordinatesForAddress(address, city) {
 export async function fetchProperties() {
   try {
     // Fetch all properties first, then filter client-side for visibility
-    // Properties become visible after payment is completed (payment_status="paid")
+    // Properties become visible after approval
     const { data, error } = await supabase
       .from("properties")
       .select("*")
@@ -68,17 +89,38 @@ export async function fetchProperties() {
       return [];
     }
 
-    // Filter to show ONLY properties that have successful payment
-    // Check status = "approved" (which is set after payment)
-    // Also check payment_status = "paid" if column exists
-    // This ensures only paid properties are visible to all users
+    // Helper to check if property is expired
+    const isPropertyExpired = (property) => {
+      if (property.status !== "approved") return false;
+      
+      const createdAt = new Date(property.created_at);
+      const now = new Date();
+      const pkg = (property.package_name || "Silver").toLowerCase();
+      
+      let validityDays = 15;
+      if (pkg === "gold") validityDays = 30;
+      else if (pkg === "platinum") validityDays = 45;
+      
+      const expiryDate = new Date(createdAt);
+      expiryDate.setDate(createdAt.getDate() + validityDays);
+      
+      return now > expiryDate;
+    };
+
+    // Filter to show ONLY properties that have status "approved" AND are NOT expired
+    // This ensures only active, approved properties are visible to all users
     const visibleProperties = (data || []).filter(property => 
-      property.status === "approved" || property.payment_status === "paid"
+      property.status === "approved" && !isPropertyExpired(property)
     );
 
     // Map database fields to frontend format
     return visibleProperties.map((property) => {
       const coords = getCoordinatesForAddress(property.address, property.city);
+      const images = getArray(property.image_urls);
+      const photos = getArray(property.photos);
+      const displayImage = images[0] || photos[0] || "https://via.placeholder.com/400";
+      const allPhotos = images.length > 0 ? images : (photos.length > 0 ? photos : [displayImage]);
+
       return {
         id: property.id,
         title: property.title || "Untitled Property",
@@ -86,8 +128,8 @@ export async function fetchProperties() {
         location: property.city || property.address || "Unknown",
         address: property.address || "",
         city: property.city || "",
-        img: property.image_urls?.[0] || "https://via.placeholder.com/400",
-        photos: property.image_urls || [property.image_urls?.[0] || "https://via.placeholder.com/400"],
+        img: displayImage,
+        photos: allPhotos,
         bedrooms: property.bedrooms || "N/A",
         bathrooms: property.bathrooms || "N/A",
         type: property.property_listing_type?.toLowerCase() || "rent", // Lease, Sell, Rent -> rent, sale, rent
@@ -101,14 +143,16 @@ export async function fetchProperties() {
         lat: property.latitude || property.lat || coords.lat,
         lng: property.longitude || property.lng || coords.lng,
         contact: property.contact_phone || property.contact_name || "N/A",
-        contactName: property.contact_name || "",
-        contactEmail: property.contact_email || "",
-        contactPhone: property.contact_phone || "",
-        description: property.description || "",
-        verified: property.verified || property.status === "approved" || false,
-        area: property.area || "",
-        minDuration: property.min_duration || "",
-        createdAt: property.created_at,
+      contactName: property.contact_name || "",
+      contactEmail: property.contact_email || "",
+      contactPhone: property.contact_phone || "",
+      description: property.description || "",
+      verified: property.verified || property.status === "approved" || false,
+      area: property.area || "",
+      minDuration: property.min_duration || "",
+      nearbyPlaces: property.nearby_places || "",
+      createdAt: property.created_at,
+      packageName: property.package_name || "Silver",
       };
     });
   } catch (error) {
@@ -163,6 +207,10 @@ export async function fetchPropertyById(id) {
 
     // Get coordinates based on address
     const coords = getCoordinatesForAddress(data.address, data.city);
+    const images = getArray(data.image_urls);
+    const photos = getArray(data.photos);
+    const displayImage = images[0] || photos[0] || "https://via.placeholder.com/400";
+    const allPhotos = images.length > 0 ? images : (photos.length > 0 ? photos : [displayImage]);
 
     // Map to frontend format
     return {
@@ -172,8 +220,8 @@ export async function fetchPropertyById(id) {
       location: data.city || data.address || "Unknown",
       address: data.address || "",
       city: data.city || "",
-      img: data.image_urls?.[0] || "https://via.placeholder.com/400",
-      photos: data.image_urls || [data.image_urls?.[0] || "https://via.placeholder.com/400"],
+      img: displayImage,
+      photos: allPhotos,
       bedrooms: data.bedrooms || "N/A",
       bathrooms: data.bathrooms || "N/A",
       type: data.property_listing_type?.toLowerCase() || "rent",
@@ -194,7 +242,9 @@ export async function fetchPropertyById(id) {
       verified: data.verified || data.status === "approved" || false,
       area: data.area || "",
       minDuration: data.min_duration || "",
+      nearbyPlaces: data.nearby_places || "",
       createdAt: data.created_at,
+      packageName: data.package_name || "Silver", // Default to Silver if not specified
     };
   } catch (error) {
     console.error("Error in fetchPropertyById:", error);

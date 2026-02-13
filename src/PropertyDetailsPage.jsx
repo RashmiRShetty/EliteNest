@@ -1,1033 +1,888 @@
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { fetchPropertyById } from "./utils/properties";
-import { supabase } from "./supabase";
-import { ArrowLeft, MapPin, CheckCircle, ShieldCheck, Home, Car, Building, Users, Calendar, CalendarCheck, X, Clock, Phone, Mail } from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { 
+  ArrowLeft, 
+  Heart, 
+  Share2, 
+  MapPin, 
+  BedDouble, 
+  Bath, 
+  Square, 
+  Phone, 
+  Mail, 
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  User,
+  Menu,
+  Home,
+  LogOut,
+  Bell,
+  Search,
+  Settings,
+  MessageCircle,
+  ClipboardList,
+  Plus,
+  X
+} from 'lucide-react';
+import { fetchPropertyById } from './utils/properties';
+import { supabase } from './supabase';
+import Footer from './components/Footer';
+import './Dashboard.css'; // Use Dashboard CSS for layout structure
+import './PropertyDetailsPage.css';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 
-function PropertyDetailsPage() {
-  const { propertyId, id } = useParams();
+// Fix Leaflet icon issue
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+// Reusing Icons logic from Dashboard but using Lucide icons directly for consistency
+const Icons = {
+  Menu: () => <Menu size={24} />,
+  Home: () => <Home size={20} />,
+  Property: () => <Square size={20} />, // Using Square as placeholder for Property icon
+  Clipboard: () => <ClipboardList size={20} />,
+  Calendar: () => <CalendarIcon size={20} />,
+  Heart: () => <Heart size={20} />,
+  Message: () => <MessageCircle size={20} />,
+  User: () => <User size={20} />,
+  Settings: () => <Settings size={20} />,
+  LogOut: () => <LogOut size={20} />,
+  Bell: () => <Bell size={20} />,
+  Search: () => <Search size={20} />
+};
+
+const PropertyDetailsPage = () => {
+  const { id } = useParams();
   const navigate = useNavigate();
+  const [user, setUser] = useState(null);
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedImage, setSelectedImage] = useState(0);
-  const [showFullImage, setShowFullImage] = useState(false);
-  const [fullImageUrl, setFullImageUrl] = useState("");
-  const [showBookingModal, setShowBookingModal] = useState(false);
-  const [bookingForm, setBookingForm] = useState({
-    mobileNumber: "",
-    date: "",
-    time: "",
-    email: ""
+  const [error, setError] = useState(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('elitenest:sidebarCollapsed');
+      return saved === '0' ? false : true;
+    } catch {
+      return true;
+    }
   });
-  const [bookingLoading, setBookingLoading] = useState(false);
-  const [bookingError, setBookingError] = useState("");
-  const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [user, setUser] = useState(null);
+  
+  const [bookingForm, setBookingForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    dates: [], // Will store selected date strings
+    message: ''
+  });
+
+  // Helper to get date constraints based on package and posting date
+  const getDateConstraints = () => {
+    if (!property) return { min: '', max: '', days: 15, isFlexible: false, daysLeft: 0, isNearExpiry: false };
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time for accurate day calculation
+    const postingDate = new Date(property.createdAt || today);
+    postingDate.setHours(0, 0, 0, 0);
+    const minDate = today.toISOString().split('T')[0];
+    
+    // validityDays: Silver=15, Gold=30, Platinum=45
+    let days = 15; // Default Silver
+    const pkg = (property.packageName || 'Silver').toLowerCase();
+    if (pkg === 'gold') days = 30;
+    else if (pkg === 'platinum') days = 45;
+    
+    // Max date is calculated from posting date
+    const maxDateObj = new Date(postingDate);
+    maxDateObj.setDate(postingDate.getDate() + days);
+    
+    // Calculate days left
+    const diffTime = maxDateObj.getTime() - today.getTime();
+    const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    let isFlexible = false;
+    let isNearExpiry = false;
+
+    // If the package validity period has already passed, allow selection within the next 60 days
+    if (maxDateObj < today) {
+      maxDateObj.setTime(today.getTime());
+      maxDateObj.setDate(today.getDate() + 60);
+      isFlexible = true;
+      isNearExpiry = true; // Also relax date requirements if already passed
+    } else if (daysLeft <= 3) {
+      isNearExpiry = true;
+    }
+    
+    const maxDate = maxDateObj.toISOString().split('T')[0];
+    
+    return { min: minDate, max: maxDate, days, isFlexible, daysLeft, isNearExpiry };
+  };
+
+  const constraints = getDateConstraints();
+  const minSelectableDate = constraints.min;
+  const maxSelectableDate = constraints.max;
+
+  const handleDateChange = (date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    const currentDates = [...bookingForm.dates];
+    
+    if (currentDates.includes(dateStr)) {
+      // Remove if already selected
+      setBookingForm({
+        ...bookingForm,
+        dates: currentDates.filter(d => d !== dateStr)
+      });
+    } else if (currentDates.length < 4) {
+      // Add if less than 4 selected
+      setBookingForm({
+        ...bookingForm,
+        dates: [...currentDates, dateStr].sort()
+      });
+    }
+  };
+
+  const updateDateOption = (index, field, value) => {
+    const newDates = [...bookingForm.dates];
+    newDates[index][field] = value;
+    setBookingForm({ ...bookingForm, dates: newDates });
+  };
 
   useEffect(() => {
-    // Get current user
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
-      if (user?.email) {
-        setBookingForm(prev => ({ ...prev, email: user.email }));
+      if (user) {
+        // Pre-fill booking form with user details
+        setBookingForm(prev => ({
+          ...prev,
+          name: user.user_metadata?.full_name || user.email?.split('@')[0] || '',
+          email: user.email || ''
+        }));
       }
     });
+  }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    
+    const fetchUnreadCount = async () => {
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
+        
+      if (!error) {
+        setUnreadCount(count || 0);
+      }
+    };
+    
+    fetchUnreadCount();
+    
+    // Subscribe to new notifications
+    const subscription = supabase
+      .channel('public:notifications')
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'notifications', 
+        filter: `user_id=eq.${user.id}` 
+      }, () => {
+        setUnreadCount(prev => prev + 1);
+      })
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, [user]);
+
+  useEffect(() => {
     const loadProperty = async () => {
-      setLoading(true);
-      const propertyIdToUse = propertyId || id;
-      
-      if (!propertyIdToUse) {
-        console.error("No property ID found in URL");
-        setLoading(false);
-        return;
-      }
-
-      console.log("Fetching property with ID:", propertyIdToUse);
-      
-      // Check if it's a UUID (contains hyphens) or a numeric ID
-      const isUUID = propertyIdToUse.includes('-');
-      const idToFetch = isUUID ? propertyIdToUse : parseInt(propertyIdToUse, 10);
-      
-      if (!isUUID && isNaN(idToFetch)) {
-        console.error("Invalid property ID:", propertyIdToUse);
-        setLoading(false);
-        return;
-      }
-
       try {
-        const data = await fetchPropertyById(idToFetch);
-        console.log("Fetched property data:", data);
-        setProperty(data);
-      } catch (error) {
-        console.error("Error loading property:", error);
-        setProperty(null);
+        setLoading(true);
+        const data = await fetchPropertyById(id);
+        if (data) {
+          setProperty(data);
+          
+          // Check if property is in wishlist
+          const { data: { user: currentUser } } = await supabase.auth.getUser();
+          if (currentUser) {
+            const { data: favorite, error } = await supabase
+              .from('wishlist')
+              .select('*')
+              .eq('user_id', currentUser.id)
+              .eq('property_id', id)
+              .single();
+            
+            if (favorite) setIsFavorite(true);
+          }
+        } else {
+          setError("Property not found");
+        }
+      } catch (err) {
+        console.error("Error loading property:", err);
+        setError("Failed to load property details");
       } finally {
         setLoading(false);
       }
     };
+
     loadProperty();
-  }, [propertyId, id]);
+  }, [id]);
 
-  const handleBookingSubmit = async (e) => {
+  const toggleFavorite = async () => {
+    if (!user) {
+      navigate('/loginpage', { state: { from: `/properties/${id}` } });
+      return;
+    }
+
+    setFavoriteLoading(true);
+    try {
+      if (isFavorite) {
+        // Remove from wishlist
+        const { error } = await supabase
+          .from('wishlist')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('property_id', id);
+        
+        if (!error) setIsFavorite(false);
+      } else {
+        // Add to wishlist
+        const { error } = await supabase
+          .from('wishlist')
+          .insert({
+            user_id: user.id,
+            property_id: id
+          });
+        
+        if (!error) setIsFavorite(true);
+      }
+    } catch (err) {
+      console.error("Error updating wishlist:", err);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('elitenest:sidebarCollapsed', next ? '1' : '0');
+      return next;
+    });
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/", { replace: true });
+  };
+
+  const handleBookViewing = async (e) => {
     e.preventDefault();
-    setBookingError("");
-    setBookingLoading(true);
-
-    // Validation
-    if (!bookingForm.mobileNumber || !bookingForm.date || !bookingForm.time || !bookingForm.email) {
-      setBookingError("Please fill in all fields");
-      setBookingLoading(false);
-      return;
-    }
-
-    // Validate mobile number (basic validation)
-    const phoneRegex = /^[0-9]{10}$/;
-    if (!phoneRegex.test(bookingForm.mobileNumber.replace(/\D/g, ""))) {
-      setBookingError("Please enter a valid 10-digit mobile number");
-      setBookingLoading(false);
-      return;
-    }
-
-    // Validate date is not in the past
-    const selectedDate = new Date(`${bookingForm.date}T${bookingForm.time}`);
-    const now = new Date();
-    if (selectedDate < now) {
-      setBookingError("Please select a future date and time");
-      setBookingLoading(false);
+    
+    if (!user) {
+      navigate('/loginpage', { state: { from: `/properties/${id}` } });
       return;
     }
 
     try {
-      // Insert appointment into Supabase
-      const { data, error } = await supabase
-        .from("appointments")
-        .insert([
-          {
-            property_id: property.id,
-            property_title: property.title,
-            user_id: user?.id || null,
-            user_email: bookingForm.email,
-            mobile_number: bookingForm.mobileNumber,
-            appointment_date: bookingForm.date,
-            appointment_time: bookingForm.time,
-            status: "pending",
-            created_at: new Date().toISOString()
-          }
-        ])
-        .select();
-
-      if (error) {
-        console.error("Error creating appointment:", error);
-        // If appointments table doesn't exist, try bookings table
-        const { data: bookingData, error: bookingError } = await supabase
-          .from("bookings")
-          .insert([
-            {
-              property_id: property.id,
-              property_title: property.title,
-              user_id: user?.id || null,
-              user_email: bookingForm.email,
-              mobile_number: bookingForm.mobileNumber,
-              appointment_date: bookingForm.date,
-              appointment_time: bookingForm.time,
-              status: "pending",
-              created_at: new Date().toISOString()
-            }
-          ])
-          .select();
-
-        if (bookingError) {
-          throw bookingError;
-        }
+      const minRequired = constraints.isNearExpiry ? 1 : 4;
+      if (bookingForm.dates.length < minRequired) {
+        alert(constraints.isNearExpiry 
+          ? "Please select at least 1 date from the calendar." 
+          : "Please select exactly 4 dates from the calendar.");
+        return;
+      }
+      if (!constraints.isNearExpiry && bookingForm.dates.length !== 4) {
+        alert("Please select exactly 4 dates from the calendar.");
+        return;
       }
 
-      setBookingSuccess(true);
-      setBookingForm({ mobileNumber: "", date: "", time: "", email: "" });
-      
-      // Close modal after 2 seconds
-      setTimeout(() => {
-        setShowBookingModal(false);
-        setBookingSuccess(false);
-      }, 2000);
+      const formattedDates = bookingForm.dates.map(d => ({ date: d }));
+
+      const bookingData = {
+        user_id: user.id,
+        property_id: id,
+        property_title: property.title,
+        property_location: property.location || property.address || "",
+        property_image: property.img || (property.image_urls && property.image_urls[0]) || "",
+        user_name: bookingForm.name,
+        user_email: bookingForm.email,
+        mobile_number: bookingForm.phone,
+        proposed_dates: formattedDates,
+        message: bookingForm.message,
+        appointment_date: bookingForm.dates[0] || new Date().toISOString().split('T')[0],
+        appointment_time: '00:00:00',
+        status: 'pending'
+      };
+
+      console.log("Attempting to book viewing (using bookings table):", bookingData);
+
+      const { error: bookingError } = await supabase
+        .from("bookings")
+        .insert(bookingData);
+
+      if (bookingError) {
+        console.error("Error inserting into bookings table:", bookingError.message);
+        throw bookingError;
+      }
+
+      alert("Viewing request sent successfully! We will contact you shortly.");
+      setBookingForm({ name: '', email: '', phone: '', dates: [], message: '' });
     } catch (error) {
-      console.error("Error submitting appointment:", error);
-      setBookingError(error.message || "Failed to book appointment. Please try again.");
-    } finally {
-      setBookingLoading(false);
+      console.error("Final booking viewing error:", error);
+      alert(`Failed to send viewing request: ${error.message || "Please try again"}`);
     }
   };
 
-  const handleBookingInputChange = (e) => {
-    const { name, value } = e.target;
-    setBookingForm(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: property?.title || 'Property Details',
+        text: `Check out this property: ${property?.title}`,
+        url: window.location.href,
+      }).catch(console.error);
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      alert('Link copied to clipboard!');
+    }
   };
 
   if (loading) {
     return (
-      <div style={{ padding: "120px", textAlign: "center" }}>
-        <p>Loading property details...</p>
+      <div className="pd-loading-container">
+        <div className="pd-spinner"></div>
+        <p>Loading luxury residence...</p>
       </div>
     );
   }
 
-  if (!property) {
-    const propertyIdToUse = propertyId || id;
+  if (error || !property) {
     return (
-      <div style={{ padding: "120px 20px", textAlign: "center", maxWidth: "600px", margin: "0 auto" }}>
-        <h2 style={{ color: "#ef4444", marginBottom: "15px" }}>Property Not Found</h2>
-        <p style={{ color: "#6b7280", marginBottom: "10px" }}>
-          The property with ID <strong>{propertyIdToUse}</strong> could not be found.
-        </p>
-        <p style={{ color: "#6b7280", marginBottom: "20px", fontSize: "0.9rem" }}>
-          This could mean the property doesn't exist in the database or there was an error loading it.
-        </p>
-        <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
-          <button 
-            onClick={() => navigate("/properties")}
-            style={{
-              padding: "12px 24px",
-              backgroundColor: "#1e40af",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "1rem",
-              fontWeight: "600"
-            }}
-          >
-            Return to Properties
-          </button>
-          <button 
-            onClick={() => window.location.reload()}
-            style={{
-              padding: "12px 24px",
-              backgroundColor: "#6b7280",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "1rem"
-            }}
-          >
-            Retry
-          </button>
-        </div>
-        <div style={{ marginTop: "30px", padding: "20px", backgroundColor: "#f3f4f6", borderRadius: "8px", textAlign: "left" }}>
-          <p style={{ fontSize: "0.85rem", color: "#6b7280", margin: 0 }}>
-            <strong>Debug Info:</strong><br />
-            Property ID from URL: {propertyIdToUse}<br />
-            Parsed ID: {propertyIdToUse ? parseInt(propertyIdToUse, 10) : "N/A"}<br />
-            Check the browser console (F12) for more details.
-          </p>
-        </div>
+      <div className="pd-error-container">
+        <h2>Property Not Found</h2>
+        <p>The residence you are looking for is no longer available or has been removed.</p>
+        <button onClick={() => navigate('/properties')} className="pd-back-button">
+          <ArrowLeft size={20} />
+          Back to Collection
+        </button>
       </div>
     );
   }
+
+  // Ensure images array exists and has content
+  const images = property.photos && property.photos.length > 0 
+    ? property.photos 
+    : [property.img]; // Fallback to single image
+
+  const nextImage = () => {
+    setActiveImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
+  };
+
+  const prevImage = () => {
+    setActiveImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
+  };
+
+  const greeting = user ? (user.user_metadata?.full_name || user.email.split("@")[0]) : "Guest";
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#f9fafb", padding: "100px 0 40px" }}>
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        
-        {/* BACK BUTTON */}
-        <button 
-          onClick={() => navigate(-1)} 
-          style={{
-            display: "flex", alignItems: "center", gap: "8px", background: "none",
-            border: "none", color: "#1e40af", cursor: "pointer",
-            fontWeight: "600", marginBottom: "20px", fontSize: "16px"
-          }}
-        >
-          <ArrowLeft size={20} /> Back to Properties
-        </button>
-
-        {/* MAIN CONTENT */}
-        <div style={{ 
-          backgroundColor: "#fff", 
-          borderRadius: "15px",
-          boxShadow: "0 4px 15px rgba(0,0,0,0.05)",
-          overflow: "hidden"
-        }}>
-          
-          {/* HEADER SECTION */}
-          <div style={{ padding: "34px 24px", borderBottom: "1px solid #eee", background: "linear-gradient(180deg, #f8fafc, #ffffff)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px", marginBottom: "10px" }}>
-              <div style={{ flex: 1 }}>
-                <h1 style={{ margin: 0, fontSize: "2.5rem", color: "#111827", marginBottom: "8px" }}>
-                  {property.title}
-                </h1>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                  <p style={{ display: "flex", alignItems: "center", gap: "5px", color: "#6b7280", margin: 0, fontSize: "0.95rem" }}>
-                    <MapPin size={16} /> {property.address || property.location}
-                  </p>
-                  <button 
-                    onClick={() => {
-                      const fullAddress = property.address || property.location || '';
-                      const encodedAddress = encodeURIComponent(fullAddress);
-                      const url = `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`;
-                      window.open(url, '_blank');
-                    }}
-                    style={{
-                      padding: "6px 12px",
-                      backgroundColor: "#4285f4",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "6px",
-                      cursor: "pointer",
-                      fontSize: "0.85rem",
-                      fontWeight: "500"
-                    }}
-                  >
-                    🧭 Directions
-                  </button>
-                  {property.verified && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", fontWeight: "600", color: "#065f46", backgroundColor: "#d1fae5", padding: "6px 10px", borderRadius: "9999px" }}>
-                      <ShieldCheck size={14} /> Verified
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "12px" }}>
-                  <span style={{ backgroundColor: "#eef2ff", color: "#1e40af", padding: "6px 10px", borderRadius: "9999px", fontSize: "0.8rem", fontWeight: 600, textTransform: "capitalize" }}>{property.type}</span>
-                  {property.bedrooms && <span style={{ backgroundColor: "#f1f5f9", color: "#334155", padding: "6px 10px", borderRadius: "9999px", fontSize: "0.8rem", fontWeight: 600 }}>{property.bedrooms} BHK</span>}
-                  {property.area && <span style={{ backgroundColor: "#f1f5f9", color: "#334155", padding: "6px 10px", borderRadius: "9999px", fontSize: "0.8rem", fontWeight: 600 }}>{property.area} sq ft</span>}
-                  {property.furnished && <span style={{ backgroundColor: "#f1f5f9", color: "#334155", padding: "6px 10px", borderRadius: "9999px", fontSize: "0.8rem", fontWeight: 600, textTransform: "capitalize" }}>{property.furnished}</span>}
-                </div>
-              </div>
-              <div style={{ textAlign: "right", minWidth: "150px" }}>
-                <h2 style={{ color: "#1e40af", fontSize: "2.5rem", margin: 0, fontWeight: "bold" }}>
-                  ₹{property.price.toLocaleString()}
-                </h2>
-                <p style={{ color: "#6b7280", margin: "5px 0 0 0" }}>
-                  {property.type === 'sell' ? 'For Sale' : property.type === 'rent' ? '/month' : '/month'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* PHOTO GALLERY */}
-          {property.photos && property.photos.length > 0 && (
-            <div style={{ padding: "30px 10px", borderBottom: "1px solid #eee" }}>
-              <div style={{ marginBottom: "15px" }}>
-                <h3 style={{ margin: "0 0 15px 0", fontSize: "1.5rem" }}>Photos</h3>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: property.photos.length > 1 ? "2fr 1fr" : "1fr", gap: "10px" }}>
-                <div>
-                  <img 
-                    src={property.photos[selectedImage] || property.img} 
-                    alt={property.title}
-                    style={{ 
-                      width: "100%", 
-                      height: "500px", 
-                      objectFit: "cover", 
-                      borderRadius: "12px",
-                      cursor: "pointer"
-                    }}
-                    onClick={() => {
-                      setFullImageUrl(property.photos[selectedImage] || property.img);
-                      setShowFullImage(true);
-                    }}
-                  />
-                  {property.photos.length > 1 && (
-                    <div style={{ display: "flex", gap: "10px", marginTop: "10px", justifyContent: "center" }}>
-                      <button
-                        onClick={() => setSelectedImage((selectedImage - 1 + property.photos.length) % property.photos.length)}
-                        style={{
-                          padding: "8px 16px",
-                          backgroundColor: "#1e40af",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: "6px",
-                          cursor: "pointer",
-                          fontSize: "14px"
-                        }}
-                      >
-                        ← Previous
-                      </button>
-                      <span style={{ display: "flex", alignItems: "center", color: "#6b7280" }}>
-                        {selectedImage + 1} / {property.photos.length}
-                      </span>
-                      <button
-                        onClick={() => setSelectedImage((selectedImage + 1) % property.photos.length)}
-                        style={{
-                          padding: "8px 16px",
-                          backgroundColor: "#1e40af",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: "6px",
-                          cursor: "pointer",
-                          fontSize: "14px"
-                        }}
-                      >
-                        Next →
-                      </button>
-                    </div>
-                  )}
-                  <p style={{ textAlign: "center", marginTop: "10px", color: "#6b7280", fontSize: "0.9rem" }}>
-                    Click image to view full size
-                  </p>
-                </div>
-                {property.photos.length > 1 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    {property.photos.slice(0, 4).map((photo, index) => (
-                      <img
-                        key={index}
-                        src={photo}
-                        alt={`${property.title} ${index + 1}`}
-                        style={{
-                          width: "100%",
-                          height: "120px",
-                          objectFit: "cover",
-                          borderRadius: "8px",
-                          cursor: "pointer",
-                          border: selectedImage === index ? "3px solid #1e40af" : "3px solid transparent",
-                          opacity: selectedImage === index ? 1 : 0.7
-                        }}
-                        onClick={() => setSelectedImage(index)}
-                      />
-                    ))}
-                    {property.photos.length > 4 && (
-                      <div style={{
-                        width: "100%",
-                        height: "120px",
-                        borderRadius: "8px",
-                        backgroundColor: "#f3f4f6",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#6b7280",
-                        fontWeight: "bold"
-                      }}>
-                        +{property.photos.length - 4} more
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* DETAILS GRID */}
-          <div style={{ padding: "30px 10px", display: "grid", gridTemplateColumns: "2fr 1fr", gap: "40px" }}>
-            
-            {/* LEFT COLUMN - MAIN DETAILS */}
-            <div>
-              {/* PROPERTY SPECIFICATIONS */}
-              <div style={{ marginBottom: "30px" }}>
-                <h3 style={{ fontSize: "1.5rem", marginBottom: "20px", color: "#111827" }}>Property Details</h3>
-                <div style={{ 
-                  display: "grid", 
-                  gridTemplateColumns: "repeat(2, 1fr)", 
-                  gap: "15px" 
-                }}>
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <Home size={18} color="#1e40af" />
-                      <strong>Bedrooms</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#6b7280" }}>{property.bedrooms}</p>
-                  </div>
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <Home size={18} color="#1e40af" />
-                      <strong>Bathrooms</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#6b7280" }}>{property.bathrooms || "N/A"}</p>
-                  </div>
-                  {property.area && (
-                    <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                        <Building size={18} color="#1e40af" />
-                        <strong>Area</strong>
-                      </div>
-                      <p style={{ margin: 0, color: "#6b7280" }}>{property.area}</p>
-                    </div>
-                  )}
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <Building size={18} color="#1e40af" />
-                      <strong>Listing Type</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#6b7280", textTransform: "capitalize" }}>{property.type}</p>
-                  </div>
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <Home size={18} color="#1e40af" />
-                      <strong>Furnishing</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#6b7280", textTransform: "capitalize" }}>
-                      {property.furnished === 'fully' ? 'Fully Furnished' : 
-                       property.furnished === 'semi' ? 'Semi Furnished' : 
-                       property.furnished === 'non' ? 'Non Furnished' : 
-                       property.furnished}
-                    </p>
-                  </div>
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <Users size={18} color="#1e40af" />
-                      <strong>Category</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#6b7280", textTransform: "capitalize" }}>
-                      {property.bachelorFriendly === 'family' ? 'Family' :
-                       property.bachelorFriendly === 'boys' ? 'Boys' :
-                       property.bachelorFriendly === 'girls' ? 'Girls' :
-                       property.bachelorFriendly === 'shared' ? 'Shared' :
-                       property.bachelorFriendly}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* AMENITIES */}
-              <div style={{ marginBottom: "30px" }}>
-                <h3 style={{ fontSize: "1.5rem", marginBottom: "20px", color: "#111827" }}>Amenities</h3>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "15px" }}>
-                  <div style={{ 
-                    padding: "12px 20px", 
-                    backgroundColor: property.balcony ? "#dbeafe" : "#f3f4f6",
-                    borderRadius: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px"
-                  }}>
-                    <CheckCircle size={18} color={property.balcony ? "#1e40af" : "#9ca3af"} />
-                    <span style={{ color: property.balcony ? "#1e40af" : "#6b7280", fontWeight: property.balcony ? "600" : "400" }}>
-                      Balcony {property.balcony ? "✓" : "✗"}
-                    </span>
-                  </div>
-                  <div style={{ 
-                    padding: "12px 20px", 
-                    backgroundColor: property.parking ? "#dbeafe" : "#f3f4f6",
-                    borderRadius: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px"
-                  }}>
-                    <Car size={18} color={property.parking ? "#1e40af" : "#9ca3af"} />
-                    <span style={{ color: property.parking ? "#1e40af" : "#6b7280", fontWeight: property.parking ? "600" : "400" }}>
-                      Parking {property.parking ? "✓" : "✗"}
-                    </span>
-                  </div>
-                  {property.parking && property.parkingFee > 0 && (
-                    <div style={{ 
-                      padding: "12px 20px", 
-                      backgroundColor: "#dbeafe",
-                      borderRadius: "8px"
-                    }}>
-                      <span style={{ color: "#1e40af", fontWeight: "600" }}>
-                        Parking Fee: ₹{property.parkingFee}/month
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* DESCRIPTION */}
-              {property.description && (
-                <div style={{ marginBottom: "30px" }}>
-                  <h3 style={{ fontSize: "1.5rem", marginBottom: "15px", color: "#111827" }}>Description</h3>
-                  <p style={{ color: "#6b7280", lineHeight: "1.6", fontSize: "1rem" }}>
-                    {property.description}
-                  </p>
-                </div>
-              )}
-
-              {/* LOCATION DETAILS */}
-              <div style={{ marginBottom: "30px" }}>
-                <h3 style={{ fontSize: "1.5rem", marginBottom: "20px", color: "#111827" }}>Location Details</h3>
-                <div style={{ 
-                  display: "grid", 
-                  gridTemplateColumns: "repeat(3, 1fr)", 
-                  gap: "15px" 
-                }}>
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <MapPin size={18} color="#1e40af" />
-                      <strong>Address</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#6b7280" }}>{property.address || property.location || "-"}</p>
-                  </div>
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <MapPin size={18} color="#1e40af" />
-                      <strong>City</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#6b7280" }}>{property.city || "-"}</p>
-                  </div>
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <MapPin size={18} color="#1e40af" />
-                      <strong>Nearby Places</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#6b7280" }}>{property.nearby_places || "-"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* PRICING DETAILS */}
-              <div style={{ marginBottom: "30px" }}>
-                <h3 style={{ fontSize: "1.5rem", marginBottom: "20px", color: "#111827" }}>Pricing Details</h3>
-                <div style={{ 
-                  display: "grid", 
-                  gridTemplateColumns: "repeat(2, 1fr)", 
-                  gap: "15px" 
-                }}>
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <span style={{ fontSize: "18px", color: "#1e40af" }}>₹</span>
-                      <strong>Rent/Price</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#1e40af", fontSize: "1.2rem", fontWeight: "bold" }}>
-                      ₹{property.price.toLocaleString()}{property.type === 'sell' ? '' : '/month'}
-                    </p>
-                  </div>
-                  {property.deposit > 0 && (
-                    <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                        <span style={{ fontSize: "18px", color: "#1e40af" }}>₹</span>
-                        <strong>Security Deposit</strong>
-                      </div>
-                      <p style={{ margin: 0, color: "#6b7280", fontSize: "1.1rem" }}>
-                        ₹{property.deposit.toLocaleString()}
-                      </p>
-                    </div>
-                  )}
-                  {property.minDuration && (
-                    <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                        <Calendar size={18} color="#1e40af" />
-                        <strong>Minimum Duration</strong>
-                      </div>
-                      <p style={{ margin: 0, color: "#6b7280" }}>{property.minDuration}</p>
-                    </div>
-                  )}
-                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                      <Building size={18} color="#1e40af" />
-                      <strong>Owner Type</strong>
-                    </div>
-                    <p style={{ margin: 0, color: "#6b7280", textTransform: "capitalize" }}>{property.ownerType}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* RIGHT COLUMN - BOOK APPOINTMENT & QUICK INFO */}
-            <div>
-              <div style={{ 
-                border: "1px solid #e5e7eb", 
-                borderRadius: "12px", 
-                padding: "25px",
-                position: "sticky",
-                top: "100px"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}>
-                  <CalendarCheck size={24} color="#1e40af" />
-                  <h3 style={{ fontSize: "1.3rem", margin: 0, color: "#111827" }}>Book Appointment</h3>
-                </div>
-                
-                <p style={{ color: "#6b7280", fontSize: "0.95rem", marginBottom: "25px", lineHeight: "1.6" }}>
-                  Schedule a visit to view this property. Our team will coordinate with you to arrange a convenient time.
-                </p>
-
-                <button 
-                  onClick={() => setShowBookingModal(true)}
-                  style={{
-                    width: "100%",
-                    padding: "20px",
-                    backgroundColor: "#1e40af",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "12px",
-                    cursor: "pointer",
-                    fontSize: "1.1rem",
-                    fontWeight: "600",
-                    transition: "all 0.3s ease",
-                    boxShadow: "0 4px 12px rgba(30, 64, 175, 0.3)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "10px"
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.backgroundColor = "#2563eb";
-                    e.currentTarget.style.transform = "translateY(-2px)";
-                    e.currentTarget.style.boxShadow = "0 6px 16px rgba(30, 64, 175, 0.4)";
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.backgroundColor = "#1e40af";
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "0 4px 12px rgba(30, 64, 175, 0.3)";
-                  }}
-                >
-                  <CalendarCheck size={20} />
-                  Book Appointment
-                </button>
-
-                <div style={{ 
-                  marginTop: "25px", 
-                  paddingTop: "25px", 
-                  borderTop: "1px solid #e5e7eb" 
-                }}>
-                  <h4 style={{ fontSize: "1rem", marginBottom: "15px", color: "#111827" }}>Quick Summary</h4>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#6b7280" }}>Type:</span>
-                      <span style={{ fontWeight: "600", textTransform: "capitalize" }}>{property.type}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#6b7280" }}>BHK:</span>
-                      <span style={{ fontWeight: "600" }}>{property.bedrooms}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#6b7280" }}>Furnishing:</span>
-                      <span style={{ fontWeight: "600", textTransform: "capitalize" }}>
-                        {property.furnished === 'fully' ? 'Fully' : 
-                         property.furnished === 'semi' ? 'Semi' : 
-                         property.furnished === 'non' ? 'Non' : property.furnished}
-                      </span>
-                    </div>
-                    {property.balcony && (
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "#6b7280" }}>Balcony:</span>
-                        <span style={{ fontWeight: "600", color: "#059669" }}>Yes</span>
-                      </div>
-                    )}
-                    {property.parking && (
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "#6b7280" }}>Parking:</span>
-                        <span style={{ fontWeight: "600", color: "#059669" }}>Yes</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+    <div className="dashboard-container dark-theme">
+      {/* Sidebar */}
+      <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <div className="sidebar-header">
+          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <button onClick={toggleSidebar} className="sidebar-toggle-btn">
+            <Icons.Menu />
+          </button>
         </div>
-      </div>
+        
+        <nav className="sidebar-nav">
+          <Link to="/dashboard" className="nav-item">
+            <span className="nav-icon"><Icons.Home /></span>
+            <span>Dashboard</span>
+          </Link>
+          <Link to="/properties" className="nav-item active">
+            <span className="nav-icon"><Icons.Property /></span>
+            <span>Properties</span>
+          </Link>
+          {user && (
+            <>
+              <Link to="/mylistings" className="nav-item">
+                <span className="nav-icon"><Icons.Search /></span>
+                <span>My Listings</span>
+              </Link>
+              <Link to="/favorites" className="nav-item">
+                <span className="nav-icon"><Icons.Calendar /></span>
+                <span>Appointment History</span>
+              </Link>
+              <Link to="/favorites" className="nav-item">
+                <span className="nav-icon"><Icons.Heart /></span>
+                <span>Saved Properties</span>
+              </Link>
+              <Link to="/messages" className="nav-item">
+                <span className="nav-icon"><Icons.Message /></span>
+                <span>Messages</span>
+              </Link>
+              <Link to="/profile" className="nav-item">
+                <span className="nav-icon"><Icons.User /></span>
+                <span>Profile</span>
+              </Link>
+              <Link to="/settings" className="nav-item">
+                <span className="nav-icon"><Icons.Settings /></span>
+                <span>Settings</span>
+              </Link>
+              <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                <button onClick={handleSignOut} className="nav-item" style={{ width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger-color)' }}>
+                  <span className="nav-icon"><Icons.LogOut /></span>
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </>
+          )}
+        </nav>
+      </aside>
 
-      {/* Booking Modal */}
-      {showBookingModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            zIndex: 10000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px"
-          }}
-          onClick={() => !bookingLoading && setShowBookingModal(false)}
-        >
-          <div
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: "12px",
-              padding: "30px",
-              maxWidth: "500px",
-              width: "100%",
-              maxHeight: "90vh",
-              overflow: "auto",
-              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.2)"
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "25px" }}>
-              <h2 style={{ margin: 0, fontSize: "1.5rem", color: "#111827" }}>Book Appointment</h2>
-              <button
-                onClick={() => setShowBookingModal(false)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "5px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}
-                disabled={bookingLoading}
+      {/* Main Content */}
+      <main className={`main-content ${sidebarCollapsed ? 'expanded' : ''}`}>
+        {/* Top Header */}
+        <header className="top-header">
+          <div className="header-left">
+            <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
+              <Icons.Menu />
+            </button>
+            <Link to="/" className="header-brand">Elite Nest</Link>
+            <nav className="header-links">
+              <Link to="/dashboard" className="header-link">Home</Link>
+              <Link to="/properties" className="header-link">Properties</Link>
+              <Link to="/contact" className="header-link">Contact</Link>
+              <Link to="/about" className="header-link">About Us</Link>
+            </nav>
+          </div>       
+          <div className="header-actions">
+            <div style={{ position: 'relative' }}>
+              <button 
+                className="icon-btn" 
+                onClick={() => navigate('/notifications')}
+                aria-label="Notifications"
               >
-                <X size={24} color="#6b7280" />
+                <Icons.Bell />
+              </button>
+              {unreadCount > 0 && (
+                <span style={{
+                  position: "absolute",
+                  top: "0px",
+                  right: "0px",
+                  width: "8px",
+                  height: "8px",
+                  backgroundColor: "var(--danger-color)",
+                  borderRadius: "50%"
+                }}></span>
+              )}
+            </div>
+            
+            <div className="user-profile">
+              <div className="user-avatar">
+                {greeting.charAt(0).toUpperCase()}
+              </div>
+              <div className="user-info">
+                <span className="user-name">{greeting}</span>
+                <span className="user-role">User</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Property Content */}
+        <div className="pd-content-wrapper">
+          {/* Hero Section with Gallery */}
+          <section className="pd-gallery-section">
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+              <button onClick={() => navigate(-1)} className="pd-nav-button" style={{ display: 'flex', alignItems: 'center', gap: '8px', border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1.1rem', padding: 0 }}>
+                <ArrowLeft size={24} />
+                <span>Back</span>
+              </button>
+              <button 
+                className={`pd-action-button ${showMap ? 'active' : ''}`}
+                onClick={() => setShowMap(!showMap)}
+                style={{ width: 'auto', padding: '0 16px', borderRadius: '8px', gap: '8px', height: '40px', fontSize: '1rem' }}
+              >
+                <MapPin size={20} />
+                {showMap ? 'Hide Map' : 'Map View'}
               </button>
             </div>
 
-            {property && (
-              <div style={{ marginBottom: "20px", padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
-                <p style={{ margin: "0 0 5px 0", color: "#6b7280", fontSize: "0.9rem" }}>Property:</p>
-                <p style={{ margin: 0, fontWeight: "600", color: "#111827" }}>{property.title}</p>
-                <p style={{ margin: "5px 0 0 0", color: "#6b7280", fontSize: "0.9rem" }}>{property.location}</p>
-              </div>
-            )}
-
-            {bookingSuccess ? (
-              <div style={{ textAlign: "center", padding: "20px" }}>
-                <div style={{ fontSize: "48px", marginBottom: "15px" }}>✅</div>
-                <h3 style={{ color: "#059669", marginBottom: "10px" }}>Appointment Booked!</h3>
-                <p style={{ color: "#6b7280" }}>Your appointment request has been sent to the admin. You will be contacted shortly.</p>
-              </div>
-            ) : (
-              <form onSubmit={handleBookingSubmit}>
-                {bookingError && (
-                  <div style={{
-                    padding: "12px",
-                    backgroundColor: "#fee2e2",
-                    color: "#dc2626",
-                    borderRadius: "8px",
-                    marginBottom: "20px",
-                    fontSize: "0.9rem"
-                  }}>
-                    {bookingError}
-                  </div>
+            <div className="pd-gallery-split-container" style={{ display: 'flex', gap: '20px', height: showMap ? '500px' : 'auto', transition: 'all 0.3s ease' }}>
+              <div className="pd-main-image-wrapper" style={{ width: showMap ? '50%' : '100%', height: showMap ? '100%' : '60vh', transition: 'all 0.3s ease' }}>
+                <img 
+                  src={images[activeImageIndex]} 
+                  alt={property.title} 
+                  className="pd-main-image"
+                />
+                
+                {images.length > 1 && !showMap && (
+                  <>
+                    <button className="pd-gallery-nav prev" onClick={prevImage}>
+                      <ChevronLeft size={24} />
+                    </button>
+                    <button className="pd-gallery-nav next" onClick={nextImage}>
+                      <ChevronRight size={24} />
+                    </button>
+                  </>
                 )}
 
-                <div style={{ marginBottom: "20px" }}>
-                  <label style={{ display: "block", marginBottom: "8px", color: "#374151", fontWeight: "500" }}>
-                    <Mail size={16} style={{ display: "inline", marginRight: "5px", verticalAlign: "middle" }} />
-                    Email *
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={bookingForm.email}
-                    onChange={handleBookingInputChange}
-                    placeholder="Enter email address"
-                    required
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "8px",
-                      fontSize: "1rem",
-                      boxSizing: "border-box"
-                    }}
-                    disabled={bookingLoading}
-                  />
+                <div className="pd-image-overlay">
+                  <div className="pd-actions-overlay" style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', gap: '12px' }}>
+                    <button 
+                      className={`pd-action-button ${isFavorite ? 'active' : ''}`}
+                      onClick={toggleFavorite}
+                      disabled={favoriteLoading}
+                      style={{width: '48px', height: '48px', background: 'rgba(255, 255, 255, 0.9)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', opacity: favoriteLoading ? 0.7 : 1}}
+                      title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+                    >
+                      <Heart size={24} fill={isFavorite ? "#ef4444" : "none"} color={isFavorite ? "#ef4444" : "#333"} />
+                    </button>
+                    <button 
+                      className="pd-action-button" 
+                      onClick={handleShare} 
+                      style={{width: '48px', height: '48px', background: 'rgba(255, 255, 255, 0.9)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)'}}
+                      title="Share Property"
+                    >
+                      <Share2 size={24} color="#333" />
+                    </button>
+                  </div>
+                  <div className="pd-status-badge">
+                    {property.type === 'sale' ? 'For Sale' : 'For Rent'}
+                  </div>
                 </div>
+              </div>
 
-                <div style={{ marginBottom: "20px" }}>
-                  <label style={{ display: "block", marginBottom: "8px", color: "#374151", fontWeight: "500" }}>
-                    <Phone size={16} style={{ display: "inline", marginRight: "5px", verticalAlign: "middle" }} />
-                    Alternative Mobile Number *
-                  </label>
-                  <input
-                    type="tel"
-                    name="mobileNumber"
-                    value={bookingForm.mobileNumber}
-                    onChange={handleBookingInputChange}
-                    placeholder="Enter 10-digit mobile number"
-                    required
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "8px",
-                      fontSize: "1rem",
-                      boxSizing: "border-box"
-                    }}
-                    disabled={bookingLoading}
-                  />
-                </div>
-
-                <div style={{ marginBottom: "20px" }}>
-                  <label style={{ display: "block", marginBottom: "8px", color: "#374151", fontWeight: "500" }}>
-                    <Calendar size={16} style={{ display: "inline", marginRight: "5px", verticalAlign: "middle" }} />
-                    Date *
-                  </label>
-                  <input
-                    type="date"
-                    name="date"
-                    value={bookingForm.date}
-                    onChange={handleBookingInputChange}
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "8px",
-                      fontSize: "1rem",
-                      boxSizing: "border-box"
-                    }}
-                    disabled={bookingLoading}
-                  />
-                </div>
-
-                <div style={{ marginBottom: "25px" }}>
-                  <label style={{ display: "block", marginBottom: "8px", color: "#374151", fontWeight: "500" }}>
-                    <Clock size={16} style={{ display: "inline", marginRight: "5px", verticalAlign: "middle" }} />
-                    Time *
-                  </label>
-                  <input
-                    type="time"
-                    name="time"
-                    value={bookingForm.time}
-                    onChange={handleBookingInputChange}
-                    required
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "8px",
-                      fontSize: "1rem",
-                      boxSizing: "border-box"
-                    }}
-                    disabled={bookingLoading}
-                  />
-                </div>
-
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowBookingModal(false)}
-                    disabled={bookingLoading}
-                    style={{
-                      flex: 1,
-                      padding: "12px",
-                      backgroundColor: "#f3f4f6",
-                      color: "#374151",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontSize: "1rem",
-                      fontWeight: "500",
-                      cursor: bookingLoading ? "not-allowed" : "pointer"
-                    }}
+              {showMap && (
+                <div className="pd-map-wrapper" style={{ width: '50%', height: '100%', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--pd-border)', position: 'relative', zIndex: 1 }}>
+                  <MapContainer 
+                    center={[property.lat || 20.5937, property.lng || 78.9629]} 
+                    zoom={13} 
+                    style={{ height: '100%', width: '100%' }}
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={bookingLoading}
-                    style={{
-                      flex: 1,
-                      padding: "12px",
-                      backgroundColor: bookingLoading ? "#9ca3af" : "#1e40af",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontSize: "1rem",
-                      fontWeight: "600",
-                      cursor: bookingLoading ? "not-allowed" : "pointer",
-                      transition: "background-color 0.3s"
-                    }}
-                  >
-                    {bookingLoading ? "Sending..." : "Send"}
-                  </button>
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+                    <Marker position={[property.lat || 20.5937, property.lng || 78.9629]}>
+                      <Popup>
+                        <div style={{ color: '#000' }}>
+                          <strong>{property.title}</strong><br/>
+                          {property.location}
+                        </div>
+                      </Popup>
+                    </Marker>
+                  </MapContainer>
                 </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
+              )}
+            </div>
 
-      {/* Full Image Modal */}
-      {showFullImage && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.95)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px"
-          }}
-          onClick={() => setShowFullImage(false)}
-        >
-          <div style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh" }}>
-            <img
-              src={fullImageUrl}
-              alt={property?.title}
-              style={{
-                maxWidth: "100%",
-                maxHeight: "90vh",
-                objectFit: "contain",
-                borderRadius: "8px"
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-            <button
-              onClick={() => setShowFullImage(false)}
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "10px",
-                backgroundColor: "rgba(255, 255, 255, 0.9)",
-                border: "none",
-                borderRadius: "50%",
-                width: "40px",
-                height: "40px",
-                fontSize: "24px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#000"
-              }}
-            >
-              ×
-            </button>
-            {property?.photos && property.photos.length > 1 && (
-              <div style={{ position: "absolute", bottom: "20px", left: "50%", transform: "translateX(-50%)", display: "flex", gap: "10px" }}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const newIndex = (selectedImage - 1 + property.photos.length) % property.photos.length;
-                    setSelectedImage(newIndex);
-                    setFullImageUrl(property.photos[newIndex]);
-                  }}
-                  style={{
-                    padding: "10px 20px",
-                    backgroundColor: "rgba(255, 255, 255, 0.9)",
-                    color: "#000",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontSize: "16px"
-                  }}
-                >
-                  ← Previous
-                </button>
-                <span style={{ display: "flex", alignItems: "center", color: "#fff", padding: "0 10px" }}>
-                  {selectedImage + 1} / {property.photos.length}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const newIndex = (selectedImage + 1) % property.photos.length;
-                    setSelectedImage(newIndex);
-                    setFullImageUrl(property.photos[newIndex]);
-                  }}
-                  style={{
-                    padding: "10px 20px",
-                    backgroundColor: "rgba(255, 255, 255, 0.9)",
-                    color: "#000",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontSize: "16px"
-                  }}
-                >
-                  Next →
-                </button>
+            {images.length > 1 && !showMap && (
+              <div className="pd-thumbnails-scroll">
+                <div className="pd-thumbnails">
+                  {images.map((img, index) => (
+                    <button
+                      key={index}
+                      className={`pd-thumbnail ${index === activeImageIndex ? 'active' : ''}`}
+                      onClick={() => setActiveImageIndex(index)}
+                    >
+                      <img src={img} alt={`View ${index + 1}`} />
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
+          </section>
+
+          <div className="pd-content-grid">
+            {/* Left Column: Property Details */}
+            <div className="pd-details-column">
+              <div className="pd-title-section fade-up">
+                <div className="pd-location-badge">
+                  <MapPin size={16} />
+                  {property.location}
+                </div>
+                <h1 className="pd-title">{property.title}</h1>
+                <div className="pd-price">
+                  {typeof property.price === 'number' 
+                    ? `$${property.price.toLocaleString()}` 
+                    : property.price}
+                  {property.type === 'rent' && <span className="pd-period">/month</span>}
+                </div>
+              </div>
+
+              <div className="pd-metrics-grid fade-up" style={{animationDelay: '0.1s'}}>
+                <div className="pd-metric-card">
+                  <BedDouble size={24} />
+                  <div className="pd-metric-info">
+                    <span className="label">Bedrooms</span>
+                    <span className="value">{property.bedrooms}</span>
+                  </div>
+                </div>
+                <div className="pd-metric-card">
+                  <Bath size={24} />
+                  <div className="pd-metric-info">
+                    <span className="label">Bathrooms</span>
+                    <span className="value">{property.bathrooms || 2}</span>
+                  </div>
+                </div>
+                <div className="pd-metric-card">
+                  <Square size={24} />
+                  <div className="pd-metric-info">
+                    <span className="label">Area</span>
+                    <span className="value">{property.sqft || '2,500'} sq ft</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pd-section fade-up" style={{animationDelay: '0.2s'}}>
+                <h2 className="pd-section-title">Description</h2>
+                <p className="pd-description">
+                  {property.description}
+                </p>
+              </div>
+
+              {/* Dynamic Amenities */}
+              <div className="pd-section fade-up" style={{animationDelay: '0.3s'}}>
+                <h2 className="pd-section-title">Features & Amenities</h2>
+                <div className="pd-amenities-grid">
+                  {[
+                    property.furnished && property.furnished !== 'Unfurnished' ? `${property.furnished} Furnished` : null,
+                    ...(property.amenities || [])
+                  ].filter(Boolean).map((amenity, index) => (
+                    <div key={index} className="pd-amenity-item">
+                      <CheckCircle2 size={16} className="pd-amenity-icon" />
+                      <span>{amenity}</span>
+                    </div>
+                  ))}
+                  
+                  {/* Fallback if no amenities listed to avoid empty section */}
+                  {(!property.amenities || property.amenities.length === 0) && !property.furnished && (
+                    <p className="pd-no-data-text">Contact agent for full amenity list.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Nearby Places - Only show if data exists */}
+              {property.nearbyPlaces && (
+                <div className="pd-section fade-up" style={{animationDelay: '0.4s'}}>
+                  <h2 className="pd-section-title">Nearby Places</h2>
+                  <div className="pd-nearby-content">
+                    <p>{property.nearbyPlaces}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Booking Form */}
+            <div className="pd-sidebar-column">
+              <div className="pd-booking-card fade-up" style={{animationDelay: '0.5s'}}>
+                <h3 className="pd-booking-title">Book a Viewing</h3>
+                <p className="pd-booking-subtitle">Interested in this property? Schedule a private tour.</p>
+                
+                <form onSubmit={handleBookViewing} className="pd-booking-form">
+                  <div className="pd-input-group">
+                    <div className="pd-input-icon"><User size={18} /></div>
+                    <input
+                      type="text"
+                      placeholder="Your Name"
+                      value={bookingForm.name}
+                      onChange={(e) => setBookingForm({...bookingForm, name: e.target.value})}
+                      required
+                      className="pd-input"
+                      readOnly={!!user}
+                      style={user ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', cursor: 'not-allowed' } : {}}
+                    />
+                  </div>
+                  
+                  <div className="pd-input-group">
+                    <div className="pd-input-icon"><Mail size={18} /></div>
+                    <input
+                      type="email"
+                      placeholder="Email Address"
+                      value={bookingForm.email}
+                      onChange={(e) => setBookingForm({...bookingForm, email: e.target.value})}
+                      required
+                      className="pd-input"
+                      readOnly={!!user}
+                      style={user ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', cursor: 'not-allowed' } : {}}
+                    />
+                  </div>
+
+                  <div className="pd-input-group">
+                    <div className="pd-input-icon"><Phone size={18} /></div>
+                    <input
+                      type="tel"
+                      placeholder="Phone Number"
+                      value={bookingForm.phone}
+                      onChange={(e) => setBookingForm({...bookingForm, phone: e.target.value})}
+                      required
+                      className="pd-input"
+                    />
+                  </div>
+
+                  <div className="pd-dates-section" style={{ marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                      <span style={{ fontSize: '0.95rem', color: 'var(--pd-text-primary)', fontWeight: '600', letterSpacing: '0.3px' }}>
+                        {constraints.isNearExpiry ? 'Preferred Dates' : '4 Preferred Dates'}
+                      </span>
+                      {constraints.isNearExpiry && (
+                        <span style={{ 
+                          fontSize: '0.7rem', 
+                          padding: '2px 8px', 
+                          background: 'rgba(239, 68, 68, 0.1)', 
+                          color: '#ef4444', 
+                          borderRadius: '12px',
+                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                        }}>
+                          Expiry Soon: Flexibility Enabled
+                        </span>
+                      )}
+                      <span style={{ 
+                        fontSize: '0.8rem', 
+                        color: (constraints.isNearExpiry ? bookingForm.dates.length >= 1 : bookingForm.dates.length === 4) ? 'var(--pd-accent-gold-bright)' : 'var(--pd-danger)', 
+                        fontWeight: '700',
+                        background: (constraints.isNearExpiry ? bookingForm.dates.length >= 1 : bookingForm.dates.length === 4) ? 'rgba(251, 191, 36, 0.1)' : 'rgba(239, 68, 68, 0.05)',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        transition: 'all 0.3s',
+                        marginLeft: 'auto'
+                      }}>
+                        {bookingForm.dates.length}{!constraints.isNearExpiry && '/4'} Selected
+                      </span>
+                    </div>
+                    {property && (
+                      <div style={{ 
+                        fontSize: '0.8rem', 
+                        color: 'var(--pd-accent-gold-bright)', 
+                        marginBottom: '16px', 
+                        padding: '12px 16px', 
+                        background: 'rgba(251, 191, 36, 0.05)', 
+                        borderRadius: '12px',
+                        border: '1px solid rgba(251, 191, 36, 0.1)',
+                        lineHeight: '1.4'
+                      }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                          <CheckCircle2 size={16} style={{ marginTop: '2px', flexShrink: 0 }} />
+                          <span>
+                            {constraints.isFlexible ? (
+                              <>The original <strong>{constraints.days}-day</strong> booking period has ended, but you can still request a viewing for any date in the next <strong>60 days</strong>. You can select <strong>any number of dates</strong>.</>
+                            ) : constraints.isNearExpiry ? (
+                              <>This property expires in <strong>{constraints.daysLeft} days</strong>. Since it's closing soon, you can select <strong>any number of dates</strong> instead of 4.</>
+                            ) : (
+                              <>This <strong>{property.packageName || 'Silver'}</strong> property was posted on <strong>{new Date(property.createdAt).toLocaleDateString()}</strong>. Appointments are allowed within <strong>{constraints.days} days</strong> of posting.</>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pd-calendar-container" style={{ marginBottom: '20px' }}>
+                      <Calendar 
+                        onChange={handleDateChange}
+                        minDate={new Date(minSelectableDate)}
+                        maxDate={new Date(maxSelectableDate)}
+                        className="pd-custom-calendar"
+                        tileClassName={({ date, view }) => {
+                          if (view === 'month') {
+                            const dateStr = date.toISOString().split('T')[0];
+                            if (bookingForm.dates.includes(dateStr)) {
+                              return 'selected-date-tile';
+                            }
+                          }
+                          return null;
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ 
+                      marginTop: '15px', 
+                      padding: '12px', 
+                      background: 'rgba(251, 191, 36, 0.05)', 
+                      borderRadius: '10px',
+                      border: '1px solid rgba(251, 191, 36, 0.1)',
+                      fontSize: '0.8rem',
+                      color: 'var(--pd-accent-gold-bright)',
+                      textAlign: 'center'
+                    }}>
+                      <CalendarIcon size={14} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
+                      Appointments available between <strong>{new Date(minSelectableDate).toLocaleDateString()}</strong> and <strong>{new Date(maxSelectableDate).toLocaleDateString()}</strong>
+                    </div>
+
+                    {bookingForm.dates.length > 0 && (
+                      <div className="pd-selected-dates-preview">
+                        <div style={{ 
+                          textAlign: 'center',
+                          fontSize: '0.85rem', 
+                          color: 'var(--pd-text-secondary)', 
+                          marginBottom: '20px', 
+                          fontWeight: '600',
+                          textTransform: 'uppercase',
+                          letterSpacing: '1px'
+                        }}>
+                          Selected Dates:
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
+                          {bookingForm.dates.map((d, i) => (
+                            <div key={i} className="pd-selected-date-badge">
+                              <CalendarIcon size={16} />
+                              <span style={{ fontWeight: '600' }}>
+                                {new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                              <button 
+                                type="button" 
+                                onClick={() => handleDateChange(new Date(d))}
+                                className="pd-remove-date"
+                                title="Remove date"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <textarea
+                    placeholder="I am interested in this property..."
+                    value={bookingForm.message}
+                    onChange={(e) => setBookingForm({...bookingForm, message: e.target.value})}
+                    className="pd-textarea"
+                    rows="4"
+                  ></textarea>
+
+                  <button type="submit" className="pd-submit-button">
+                    Request Viewing
+                  </button>
+                </form>
+              </div>
+            </div>
           </div>
         </div>
-      )}
+        
+        <Footer />
+      </main>
     </div>
   );
-}
+};
 
 export default PropertyDetailsPage;

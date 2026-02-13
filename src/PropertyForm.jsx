@@ -1,14 +1,48 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import "./PropertyForm.css";
-import { useLocation } from "react-router-dom";
-import { CheckCircle, Home, User, Phone, Mail, MapPin, UploadCloud, ArrowRight, ArrowLeft, Building, DollarSign } from "lucide-react";
+import "./Dashboard.css"; // Import Dashboard styles
+import "./components/PaymentModal.css"; // Import Payment styles for package selection
+import Footer from "./components/Footer.jsx";
+import { useLocation, Link, useNavigate } from "react-router-dom";
+import { CheckCircle, Home, User, Phone, Mail, MapPin, UploadCloud, ArrowRight, ArrowLeft, Building, DollarSign, Check, Shield, Crown, Sparkles, X } from "lucide-react";
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import SellerTipsAndBenefits from "./components/SellerTipsAndBenefits";
+
+
+// Icons components for sidebar (copied from Dashboard.jsx for consistency)
+const Icons = {
+  Menu: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="butt" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>,
+  Home: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>,
+  Property: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>,
+  Clipboard: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect></svg>,
+  Calendar: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>,
+  Heart: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>,
+  Message: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>,
+  User: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
+  Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+  LogOut: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>,
+  Bell: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>,
+  Search: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
+  ArrowRight: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+};
 
 const PropertyForm = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const initialListingType = location.state?.propertyType || "Sell";
+
+  // Dashboard layout state
+  const [user, setUser] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('elitenest:sidebarCollapsed');
+      return saved === '0' ? false : true;
+    } catch {
+      return true;
+    }
+  });
 
   const [formData, setFormData] = useState({
     listingType: initialListingType,
@@ -40,8 +74,118 @@ const PropertyForm = () => {
   const [activeField, setActiveField] = useState(null); // Track which input field is active
   const [showMapModal, setShowMapModal] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState(null);
+  const [selectedPackage, setSelectedPackage] = useState(null);
+  const [viewDetailsPackage, setViewDetailsPackage] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const packages = [
+    {
+      id: 'silver',
+      name: 'Silver',
+      price: '₹299',
+      period: '',
+      maxPhotos: 5,
+      validityDays: 15,
+      features: [
+        'Standard Listing',
+        'Listed for 15 Days',
+        '5 Photos Limit',
+        'Basic Support'
+      ],
+      isPopular: false
+    },
+    {
+      id: 'gold',
+      name: 'Gold',
+      price: '₹499',
+      period: '',
+      maxPhotos: 10,
+      validityDays: 30,
+      features: [
+        'Featured Badge',
+        'Top of Search Results',
+        'Listed for 30 Days',
+        '10 Photos Limit',
+        'Priority Support',
+        'Verified Tag'
+      ],
+      isPopular: true
+    },
+    {
+      id: 'platinum',
+      name: 'Platinum',
+      price: '₹999',
+      period: '',
+      maxPhotos: 100,
+      validityDays: 45,
+      features: [
+        'All Gold Features',
+        'Listed for 45 Days',
+        'Unlimited Photos',
+        'Social Media Promotion',
+        'Email Blast to Buyers',
+        'Dedicated Agent'
+      ],
+      isPopular: false
+    }
+  ];
 
   const isRentOrLease = formData.listingType === "Rent" || formData.listingType === "Lease";
+
+  // Auth check and Sidebar logic
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    const fetchUnreadCount = async () => {
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
+        
+      if (!error) {
+        setUnreadCount(count || 0);
+      }
+    };
+    
+    fetchUnreadCount();
+    
+    // Subscribe to new notifications
+    const subscription = supabase
+      .channel('public:notifications')
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'notifications', 
+        filter: `user_id=eq.${user.id}` 
+      }, () => {
+        setUnreadCount(prev => prev + 1);
+      })
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, [user]);
+
+  const handleSignOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (!error) navigate("/", { replace: true });
+  };
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('elitenest:sidebarCollapsed', next ? '1' : '0');
+      return next;
+    });
+  };
 
   // Load Leaflet (no API key needed)
   useEffect(() => {
@@ -216,10 +360,16 @@ const PropertyForm = () => {
     let fieldsToValidate = [];
 
     if (stepNumber === 1) {
-      fieldsToValidate = ["title", "type", "description", "contactName", "contactPhone", "contactEmail"];
+      if (!selectedPackage) {
+        alert("Please select a package to proceed.");
+        return false;
+      }
+      return true;
     } else if (stepNumber === 2) {
-      fieldsToValidate = ["area", "bedrooms", "bathrooms"];
+      fieldsToValidate = ["title", "type", "description", "contactName", "contactPhone", "contactEmail"];
     } else if (stepNumber === 3) {
+      fieldsToValidate = ["area", "bedrooms", "bathrooms"];
+    } else if (stepNumber === 4) {
       fieldsToValidate = ["address", "city", "price", ...(isRentOrLease ? ["deposit", "minDuration"] : [])];
     }
 
@@ -228,7 +378,7 @@ const PropertyForm = () => {
       if (error) newErrors[field] = error;
     });
 
-    if (stepNumber === 2) {
+    if (stepNumber === 3) {
       const areaValue = parseFloat(formData.area);
       if (!isNaN(areaValue) && areaValue < 100) {
         alert("Minimum area is 100 sq ft");
@@ -276,10 +426,34 @@ const PropertyForm = () => {
   };
 
   const handleImageChange = (e) => {
-    const files = Array.from(e.target.files).slice(0, 10);
-    imagePreviews.forEach((url) => URL.revokeObjectURL(url));
+    const maxPhotos = selectedPackage?.maxPhotos || 5;
+    const currentCount = propertyImages.length;
+    const newFiles = Array.from(e.target.files);
+    
+    if (currentCount + newFiles.length > maxPhotos) {
+      alert(`You can only upload a maximum of ${maxPhotos} photos with the ${selectedPackage?.name || 'current'} package.`);
+      return;
+    }
+
+    const files = [...propertyImages, ...newFiles].slice(0, maxPhotos);
+    imagePreviews.forEach((url) => URL.revokeObjectURL(url)); // Clean up old previews
+    
+    // Create new previews for all files
+    const newPreviews = files.map((file) => URL.createObjectURL(file));
+    
     setPropertyImages(files);
-    setImagePreviews(files.map((file) => URL.createObjectURL(file)));
+    setImagePreviews(newPreviews);
+  };
+
+  const removeImage = (index) => {
+    const newImages = propertyImages.filter((_, i) => i !== index);
+    const newPreviews = imagePreviews.filter((_, i) => i !== index);
+    
+    // Revoke the URL of the removed image to avoid memory leaks
+    URL.revokeObjectURL(imagePreviews[index]);
+    
+    setPropertyImages(newImages);
+    setImagePreviews(newPreviews);
   };
 
   const handleNext = () => {
@@ -287,6 +461,11 @@ const PropertyForm = () => {
   };
 
   const handlePrevious = () => setStep((prev) => prev - 1);
+
+  const handlePackageSelect = (pkg) => {
+    setSelectedPackage(pkg);
+    setStep(2);
+  };
 
   // Clear form function
   const clearForm = () => {
@@ -314,19 +493,14 @@ const PropertyForm = () => {
     setPropertyImages([]);
     setImagePreviews([]);
     setSelectedLocation(null);
+    setSelectedPackage(null);
     setStep(1);
     setErrors({});
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateStep(3)) return;
-    if (propertyImages.length < 3) {
-      alert("Please upload at least 3 images.");
-      return;
-    }
-
+  const submitProperty = async () => {
     setLoading(true);
+    const pkgName = selectedPackage?.name || "Standard";
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("You must be logged in.");
@@ -342,7 +516,13 @@ const PropertyForm = () => {
         imageUrls.push(data.publicUrl);
       }
 
+      // Calculate expiry date
+      const validityDays = selectedPackage?.validityDays || 30;
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + validityDays);
+
       const { error: insertError } = await supabase.from("properties").insert([{
+        user_id: user.id,
         title: formData.title,
         type: formData.type,
         area: Number(formData.area),
@@ -363,17 +543,43 @@ const PropertyForm = () => {
         furnished_status: formData.furnished,
         balcony: formData.balcony,
         nearby_places: formData.nearby,
+        // expiry_date: expiryDate.toISOString(), // TODO: Uncomment after running SQL to add expiry_date column
+        // package_name: pkgName // TODO: Uncomment after running SQL to add package_name column
       }]);
 
       if (insertError) throw insertError;
-      alert("✅ Property listed successfully!");
-      clearForm(); // Clear form after successful submission
+      alert(`✅ Property listed successfully with ${pkgName} package! Valid for ${validityDays} days.`);
+      clearForm();
     } catch (error) {
       console.error(error);
       alert(`❌ Failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!validateStep(4)) return;
+
+    // Validate photo limit based on package
+    const maxPhotos = selectedPackage?.maxPhotos || 5;
+    if (propertyImages.length > maxPhotos) {
+      alert(`You have uploaded ${propertyImages.length} images, but the ${selectedPackage?.name} package allows a maximum of ${maxPhotos}. Please remove some images.`);
+      return;
+    }
+
+    if (propertyImages.length < 3) {
+      alert("Please upload at least 3 images.");
+      return;
+    }
+    
+    // Simulate payment processing before final submission
+    if (selectedPackage && selectedPackage.price !== 'Free') {
+       alert(`Proceeding to payment for ${selectedPackage.name} package...`);
+    }
+    
+    submitProperty();
   };
 
   // Helper for rendering pills
@@ -462,46 +668,155 @@ const PropertyForm = () => {
     );
   };
 
-  const MapModal = MapModalContent;
+  const greeting = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Guest";
 
   return (
-    <div className="property-form-container" style={{ paddingTop: "40px" }}>
-      {/* LEFT SIDE - MARKETING */}
+    <div className="dashboard-container dark-theme">
+      {/* Sidebar */}
+      <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <div className="sidebar-header">
+          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <button onClick={toggleSidebar} className="sidebar-toggle-btn">
+            <Icons.Menu />
+          </button>
+        </div>
+        
+        <nav className="sidebar-nav">
+          <Link to="/dashboard" className="nav-item">
+            <span className="nav-icon"><Icons.Home /></span>
+            <span>Dashboard</span>
+          </Link>
+          <Link to="/properties" className="nav-item">
+            <span className="nav-icon"><Icons.Property /></span>
+            <span>Properties</span>
+          </Link>
+          <Link to="/mylistings" className="nav-item">
+            <span className="nav-icon"><Icons.Search /></span>
+            <span>My Listings</span>
+          </Link>
+          <Link to="/favorites" className="nav-item">
+            <span className="nav-icon"><Icons.Calendar /></span>
+            <span>Appointment History</span>
+          </Link>
+          <Link to="/favorites" className="nav-item">
+            <span className="nav-icon"><Icons.Heart /></span>
+            <span>Saved Properties</span>
+          </Link>
+          <Link to="/notifications" className="nav-item">
+            <span className="nav-icon"><Icons.Bell /></span>
+            <span>Notifications</span>
+          </Link>
+          <Link to="/profile" className="nav-item">
+            <span className="nav-icon"><Icons.User /></span>
+            <span>Profile</span>
+          </Link>
+          <Link to="/settings" className="nav-item">
+            <span className="nav-icon"><Icons.Settings /></span>
+            <span>Settings</span>
+          </Link>
+        </nav>
+
+        <div className="sidebar-footer">
+          <button onClick={handleSignOut} className="nav-item logout-btn">
+            <span className="nav-icon"><Icons.LogOut /></span>
+            <span>Log Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className={`main-content ${sidebarCollapsed ? 'expanded' : ''}`}>
+        {/* Top Header */}
+        <header className="top-header">
+          <div className="header-left">
+            <button onClick={toggleSidebar} className="header-hamburger">
+              <Icons.Menu />
+            </button>
+            <Link to="/" className="header-brand">Elite Nest</Link>
+            <nav className="header-links">
+              <Link to="/" className="header-link">Home</Link>
+              <Link to="/properties" className="header-link">Properties</Link>
+              <Link to="/contact" className="header-link">Contact</Link>
+              <Link to="/about" className="header-link">About Us</Link>
+            </nav>
+          </div>
+          <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button className="icon-btn" style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><Icons.Search /></button>
+            <div style={{ position: 'relative' }}>
+              <button 
+                className="icon-btn" 
+                style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}
+                onClick={() => navigate('/notifications')}
+                aria-label="Notifications"
+              >
+                <Icons.Bell />
+              </button>
+              {unreadCount > 0 && (
+                <span style={{
+                  position: "absolute",
+                  top: "0px",
+                  right: "0px",
+                  width: "8px",
+                  height: "8px",
+                  backgroundColor: "#ef4444",
+                  borderRadius: "50%"
+                }}></span>
+              )}
+            </div>
+            <div className="user-profile">
+              <div className="avatar-circle" style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                {greeting.charAt(0).toUpperCase()}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Existing Content Wrapped */}
+        <div className="dashboard-content">
+          <div className="property-form-container" style={{ paddingTop: "0", height: "100%" }}>
+            {/* LEFT SIDE - MARKETING */}
       <div className="form-left-section">
-        <div className="marketing-content">
-          <h1 className="marketing-title">List Your Property <br /> in 3 Simple Steps</h1>
-          
-          <div className="marketing-stats">
-            <div className="stat-item">
-              <span className="stat-number">10k+</span>
-              <span className="stat-label">Active Listings</span>
+        <div className="marketing-card">
+          <div className="marketing-content">
+            <h1 className="marketing-title">List Your Property <br /> in 3 Simple Steps</h1>
+            
+            <div className="marketing-stats">
+              <div className="stat-item">
+                <span className="stat-number">10k+</span>
+                <span className="stat-label">Active Listings</span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-number">5k+</span>
+                <span className="stat-label">Verified Buyers</span>
+              </div>
             </div>
-            <div className="stat-item">
-              <span className="stat-number">5k+</span>
-              <span className="stat-label">Verified Buyers</span>
-            </div>
-          </div>
 
-          <div className="steps-indicator">
-            <div className={`step-item ${step >= 1 ? "active" : ""}`}>
-              <div className="step-circle">1</div>
-              <div className="step-text">Basic Details</div>
+            <div className="steps-indicator">
+              <div className={`step-item ${step >= 1 ? "active" : ""}`}>
+                <div className="step-circle">1</div>
+                <div className="step-text">Select Package</div>
+              </div>
+              <div className={`step-line ${step >= 2 ? "active" : ""}`}></div>
+              <div className={`step-item ${step >= 2 ? "active" : ""}`}>
+                <div className="step-circle">2</div>
+                <div className="step-text">Basic Details</div>
+              </div>
+              <div className={`step-line ${step >= 3 ? "active" : ""}`}></div>
+              <div className={`step-item ${step >= 3 ? "active" : ""}`}>
+                <div className="step-circle">3</div>
+                <div className="step-text">Property Info</div>
+              </div>
+              <div className={`step-line ${step >= 4 ? "active" : ""}`}></div>
+              <div className={`step-item ${step >= 4 ? "active" : ""}`}>
+                <div className="step-circle">4</div>
+                <div className="step-text">Location & Photos</div>
+              </div>
             </div>
-            <div className={`step-line ${step >= 2 ? "active" : ""}`}></div>
-            <div className={`step-item ${step >= 2 ? "active" : ""}`}>
-              <div className="step-circle">2</div>
-              <div className="step-text">Property Info</div>
-            </div>
-            <div className={`step-line ${step >= 3 ? "active" : ""}`}></div>
-            <div className={`step-item ${step >= 3 ? "active" : ""}`}>
-              <div className="step-circle">3</div>
-              <div className="step-text">Location & Photos</div>
-            </div>
-          </div>
 
-          <div className="trust-badges">
-            <div className="trust-badge"><CheckCircle size={16} /> Verified Listings</div>
-            <div className="trust-badge"><CheckCircle size={16} /> Secure Process</div>
+            <div className="trust-badges">
+              <div className="trust-badge"><CheckCircle size={16} /> Verified Listings</div>
+              <div className="trust-badge"><CheckCircle size={16} /> Secure Process</div>
+            </div>
           </div>
         </div>
       </div>
@@ -512,6 +827,115 @@ const PropertyForm = () => {
           <div className="form-header-mobile">List Property</div>
           
           {step === 1 && (
+            <div className="form-step fade-in">
+              <h3 className="step-title">Select a Listing Package</h3>
+              <p className="step-subtitle" style={{ marginBottom: '24px', color: 'var(--text-secondary)' }}>
+                Choose the best plan to maximize your property's reach.
+              </p>
+              
+              <div className="payment-plans-container" style={{ padding: '0', gap: '24px' }}>
+                {packages.map((pkg) => (
+                  <div 
+                    key={pkg.id} 
+                    className={`plan-card ${pkg.id} ${selectedPackage?.id === pkg.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedPackage(pkg)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {pkg.isPopular && <span className="popular-badge">Most Popular</span>}
+                    
+                    <div className="plan-header">
+                      <div className="plan-icon-wrapper">
+                        {pkg.id === 'silver' && <Shield />}
+                        {pkg.id === 'gold' && <Crown />}
+                        {pkg.id === 'platinum' && <Sparkles />}
+                      </div>
+                    </div>
+
+                    <div className="plan-name">{pkg.name}</div>
+                    
+                    <div className="plan-price">
+                      {pkg.price}
+                      {pkg.period && <span>{pkg.period}</span>}
+                    </div>
+
+                    <button 
+                      type="button" 
+                      className="view-details-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setViewDetailsPackage(pkg);
+                      }}
+                    >
+                      View Details
+                    </button>
+                    
+                    <button 
+                      type="button"
+                      className="select-plan-btn"
+                    >
+                      {selectedPackage?.id === pkg.id ? 'Selected' : 'Select Plan'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Package Details Modal */}
+          {viewDetailsPackage && (
+            <div className="payment-modal-overlay" style={{ zIndex: 2000 }}>
+              <div className="payment-modal" style={{ maxWidth: '500px', height: 'auto', maxHeight: '90vh' }}>
+                <div className="payment-modal-header">
+                  <h2>{viewDetailsPackage.name} Package</h2>
+                  <button onClick={() => setViewDetailsPackage(null)} className="close-btn">&times;</button>
+                </div>
+                <div style={{ padding: '24px' }}>
+                  <div style={{ 
+                    fontSize: '32px', 
+                    fontWeight: 'bold', 
+                    marginBottom: '8px',
+                    color: 'var(--text-primary, #fff)'
+                  }}>
+                    {viewDetailsPackage.price}
+                  </div>
+                  <div style={{ 
+                    color: 'var(--text-secondary, #9ca3af)', 
+                    marginBottom: '24px' 
+                  }}>
+                    {viewDetailsPackage.period}
+                  </div>
+                  
+                  <ul className="plan-features" style={{ margin: 0 }}>
+                    {viewDetailsPackage.features.map((feature, index) => (
+                      <li key={index} style={{ marginBottom: '12px' }}>
+                        <Check size={20} style={{ marginRight: '12px', color: 'var(--success-color, #10b981)' }} />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button 
+                    onClick={() => {
+                      setSelectedPackage(viewDetailsPackage);
+                      setViewDetailsPackage(null);
+                      setStep(2);
+                    }}
+                    className="select-plan-btn"
+                    style={{ 
+                      marginTop: '32px',
+                      background: 'var(--primary-accent, #d97706)',
+                      color: '#000',
+                      border: 'none'
+                    }}
+                  >
+                    Select This Plan
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
             <div className="form-step fade-in">
               <h3 className="step-title">Let's start with the basics</h3>
               
@@ -597,7 +1021,7 @@ const PropertyForm = () => {
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div className="form-step fade-in">
               <h3 className="step-title">Property Specifications</h3>
 
@@ -682,7 +1106,7 @@ const PropertyForm = () => {
             </div>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <div className="form-step fade-in">
               <h3 className="step-title">Location & Pricing</h3>
 
@@ -807,7 +1231,16 @@ const PropertyForm = () => {
                 {imagePreviews.length > 0 && (
                   <div className="preview-grid">
                     {imagePreviews.map((src, i) => (
-                      <img key={i} src={src} alt="preview" />
+                      <div key={i} className="preview-item-container">
+                        <img src={src} alt="preview" />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(i)}
+                          className="remove-image-btn"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -824,7 +1257,7 @@ const PropertyForm = () => {
               <div /> // Spacer
             )}
 
-            {step < 3 ? (
+            {step < 4 ? (
               <button type="button" onClick={handleNext} className="btn-primary">
                 Next Step <ArrowRight size={16} />
               </button>
@@ -837,7 +1270,12 @@ const PropertyForm = () => {
         </form>
       </div>
       
-      <MapModal />
+      <MapModalContent />
+          </div>
+        </div>
+        <SellerTipsAndBenefits />
+        <Footer />
+      </main>
     </div>
   );
 };

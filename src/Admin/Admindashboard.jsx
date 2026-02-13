@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase.js";
-
+import { getArray } from "../utils/properties.js";
+import EditPropertyModal from "../components/EditPropertyModal";
+import emailjs from "@emailjs/browser";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -10,6 +12,7 @@ export default function AdminDashboard() {
   const [leases, setLeases] = useState([]);
   const [rentals, setRentals] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -18,7 +21,20 @@ export default function AdminDashboard() {
   const [editingProperty, setEditingProperty] = useState(null);
 
 
-  
+  useEffect(() => {
+    console.log("AdminDashboard activeTab changed to:", activeTab);
+    if (activeTab === "users") fetchUsers();
+    if (activeTab === "properties") fetchProperties();
+    if (activeTab === "sellers") fetchSellers();
+    if (activeTab === "leases") fetchLeases();
+    if (activeTab === "rentals") fetchRentals();
+    if (activeTab === "appointments") {
+      console.log("Triggering fetchAppointments for appointments tab");
+      fetchAppointments();
+    }
+    if (activeTab === "feedback") fetchFeedback();
+  }, [activeTab]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     window.location.href = "/login";
@@ -27,10 +43,20 @@ export default function AdminDashboard() {
     try {
       console.log("Updating status for property:", propertyId, "to:", newStatus);
       
+      let rejectionReason = null;
+      if (newStatus === "rejected") {
+        rejectionReason = window.prompt("Please provide a reason for rejecting this property listing:");
+        if (rejectionReason === null) return; // Admin clicked Cancel
+        if (!rejectionReason.trim()) {
+          alert("A rejection reason is required.");
+          return;
+        }
+      }
+
       // First, get the property to find the user_id
       const { data: propertyData, error: fetchError } = await supabase
         .from("properties")
-        .select("user_id, created_by, title, contact_email, contact_name")
+        .select("user_id, created_by, title, contact_email, contact_name, approval_count")
         .eq("id", propertyId)
         .single();
 
@@ -41,11 +67,59 @@ export default function AdminDashboard() {
       let property = propertyData;
 
       // Update status
+      const updateData = { 
+        status: newStatus,
+        rejection_reason: rejectionReason 
+      };
+      if (newStatus === "accepted") {
+        // Increment approval_count (requires 'approval_count' column in DB)
+        // Ensure we handle nulls and strings correctly.
+        let currentCount = 0;
+        
+        // Re-fetch strictly to be sure we have the latest count
+         const { data: freshProp, error: freshError } = await supabase
+             .from("properties")
+             .select("approval_count")
+             .eq("id", propertyId)
+             .single();
+             
+         if (freshError) {
+             console.error("Network Error fetching fresh count:", freshError);
+             alert("Network Error: Could not fetch latest approval count. Please check your connection.");
+             return; // Stop execution to prevent writing bad data
+         }
+
+         if (freshProp) {
+             currentCount = Number(freshProp.approval_count);
+             if (isNaN(currentCount)) currentCount = 0;
+         }
+
+        updateData.approval_count = currentCount + 1;
+        console.log(`[Admin] Approving property ${propertyId}. Old Count: ${currentCount}, New Count: ${updateData.approval_count}`);
+      }
+
       const { data: updatedData, error } = await supabase
         .from("properties")
-        .update({ status: newStatus })
+        .update(updateData)
         .eq("id", propertyId)
         .select();
+
+      // Fallback: If updateData included approval_count but it didn't stick (e.g. column missing in update payload for some reason), try explicit update
+      if (updateData.approval_count !== undefined && !error) {
+           // Double check persistence
+           const { data: verifyData } = await supabase.from("properties").select("approval_count").eq("id", propertyId).single();
+           if (verifyData && verifyData.approval_count !== updateData.approval_count) {
+               console.warn("Update didn't persist approval_count. Forcing separate update...");
+               await supabase.from("properties").update({ approval_count: updateData.approval_count }).eq("id", propertyId);
+           }
+      }
+
+      // DEBUG: Verify update
+      if (updatedData && updatedData[0]) {
+          console.log("Admin update verified:", updatedData[0]);
+      } else {
+          console.warn("Admin update returned no data!", error);
+      }
 
       if (error) {
         console.error("Supabase update error:", error);
@@ -58,8 +132,8 @@ export default function AdminDashboard() {
 
       console.log("Status updated successfully:", updatedData);
 
-      // Create notification for user when status is accepted
-      if (newStatus === "accepted" && property) {
+      // Create notification for user when status is updated
+      if ((newStatus === "accepted" || newStatus === "rejected") && property) {
         // Try to find user by email if user_id is not available
         let userId = property.user_id || property.created_by;
         
@@ -74,56 +148,102 @@ export default function AdminDashboard() {
             
             if (userData) {
               userId = userData.id;
+              // SELF-HEALING: Update the property with the found user_id so we don't have to look it up next time
+              await supabase.from("properties").update({ user_id: userId }).eq("id", propertyId);
             } else {
-              // Try auth users table
-              const { data: authUsers } = await supabase.auth.admin.listUsers();
-              const foundUser = authUsers?.users?.find(u => u.email === property.contact_email);
-              if (foundUser) {
-                userId = foundUser.id;
-              }
+              console.warn("User not found in profiles table by email:", property.contact_email);
             }
           } catch (err) {
             console.warn("Could not find user by email:", err);
           }
         }
+
+        // FALLBACK: If still no userId, ask the admin manually
+        if (!userId) {
+           const manualEmail = window.prompt(`Could not automatically find the user for this property.\n\nProperty Email: ${property.contact_email || 'N/A'}\n\nPlease enter the correct User Email to send the notification:`, property.contact_email || "");
+           
+           if (manualEmail) {
+               try {
+                   const { data: manualUserData } = await supabase
+                      .from("profiles")
+                      .select("id")
+                      .eq("email", manualEmail.trim())
+                      .single();
+                      
+                   if (manualUserData) {
+                       userId = manualUserData.id;
+                       // SELF-HEALING: Update the property with the found user_id
+                       await supabase.from("properties").update({ user_id: userId }).eq("id", propertyId);
+                       alert(`User found! Notification will be sent to ${manualEmail}.`);
+                   } else {
+                       alert(`Error: User with email "${manualEmail}" was not found in the system. Please ensure they have signed up.`);
+                   }
+               } catch (err) {
+                   console.error("Manual lookup failed:", err);
+               }
+           }
+        }
         
         if (userId) {
           try {
+            // Determine notification content based on status
+            const isAccepted = newStatus === "accepted";
+            const notifType = isAccepted ? "property_approved" : "property_rejected";
+            const notifTitle = isAccepted ? "Property Approved!" : "Property Rejected";
+            const notifMessage = isAccepted 
+              ? `Your property "${property.title || 'Property'}" has been accepted. Click "Post Now" to publish your listing.`
+              : `Your property "${property.title || 'Property'}" has been rejected. Reason: ${rejectionReason}`;
+
             // Try to create notification in notifications table
             const { error: notifError } = await supabase
               .from("notifications")
               .insert({
                 user_id: userId,
-                type: "property_approved",
-                title: "Property Approved!",
-                message: `Your property "${property.title || 'Property'}" has been approved. Click "Post Now" to upload documents and complete payment.`,
+                type: notifType,
+                title: notifTitle,
+                message: notifMessage,
+                property_id: propertyId,
                 read: false,
                 created_at: new Date().toISOString()
               });
-
+            
             if (notifError) {
-              console.warn("Could not create notification (table may not exist):", notifError);
-              // Try alternative notification method - create a message
-              try {
-                await supabase
-                  .from("messages")
-                  .insert({
-                    user_id: userId,
-                    subject: "Property Approved",
-                    message: `Your property "${property.title || 'Property'}" has been approved. You can now post it by clicking "Post Now" in My Listings.`,
-                    created_at: new Date().toISOString()
-                  });
-              } catch (msgErr) {
-                console.warn("Could not create message either:", msgErr);
-              }
+              console.error("NOTIFICATION INSERT ERROR:", notifError);
+              alert("Warning: Status updated, but failed to send notification: " + notifError.message);
             } else {
-              console.log("Notification created for user:", userId);
+              console.log(`Notification (${newStatus}) created for user:`, userId);
             }
+
+            // ALWAYS create a message as well
+            try {
+              const { error: msgError } = await supabase
+                .from("messages")
+                .insert({
+                  user_id: userId,
+                  subject: isAccepted ? "Property Accepted" : "Property Rejected",
+                  message: isAccepted 
+                    ? `Your property "${property.title || 'Property'}" has been accepted. Please go to "My Listings" and click "Post Now" to publish it.`
+                    : `Your property "${property.title || 'Property'}" has been rejected. Reason: ${rejectionReason}`,
+                  created_at: new Date().toISOString()
+                });
+                
+              if (msgError) {
+                 console.error("MESSAGE INSERT ERROR:", msgError);
+                 // Don't alert twice, just log
+              } else {
+                 console.log(`Message (${newStatus}) created for user:`, userId);
+              }
+            } catch (msgErr) {
+              console.warn("Could not create message:", msgErr);
+            }
+
           } catch (notifErr) {
-            console.warn("Error creating notification:", notifErr);
+            console.warn("Error creating notification/message:", notifErr);
+            alert("Error sending notification: " + notifErr.message);
           }
         } else {
-          console.warn("Could not find user_id for property notification");
+          console.warn("Could not find user_id for property notification. Email:", property.contact_email);
+          alert("Warning: Property status updated, but could not find the user to notify. (Missing user_id and email lookup failed)");
         }
       }
 
@@ -210,26 +330,126 @@ export default function AdminDashboard() {
     }
   };
 
+  const [fetchError, setFetchError] = useState(null);
+
   const fetchAppointments = async () => {
     setLoading(true);
-    // Try appointments table first, then bookings
-    let data = null;
-    const { data: appointmentsData, error: appointmentsError } = await supabase
-      .from("appointments")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (appointmentsError) {
-      const { data: bookingsData } = await supabase
+    setFetchError(null);
+    try {
+      console.log("Fetching ALL bookings for admin dashboard...");
+      
+      const { data: bookingsData, error: bookingsError } = await supabase
         .from("bookings")
         .select("*")
         .order("created_at", { ascending: false });
-      data = bookingsData || [];
-    } else {
-      data = appointmentsData || [];
+
+      if (bookingsError) {
+        console.error("Bookings table error:", bookingsError.message);
+        setFetchError(bookingsError.message);
+        setAppointments([]);
+        return;
+      }
+
+      const combinedRaw = bookingsData || [];
+
+      console.log(`Raw bookings: ${combinedRaw.length}`);
+
+      if (combinedRaw.length === 0) {
+        setAppointments([]);
+        return;
+      }
+
+      // Fetch related properties manually to avoid relationship errors
+      const propertyIds = [...new Set(combinedRaw.map(item => item.property_id).filter(Boolean))];
+      let propertiesMap = {};
+
+      if (propertyIds.length > 0) {
+        const { data: propsData, error: propsError } = await supabase
+          .from("properties")
+          .select("id, title, image_urls, photos, address, city, state")
+          .in("id", propertyIds);
+        
+        if (!propsError && propsData) {
+          propertiesMap = propsData.reduce((acc, prop) => {
+            acc[prop.id] = prop;
+            return acc;
+          }, {});
+        } else if (propsError) {
+          console.error("Error fetching properties for bookings:", propsError.message);
+        }
+      }
+
+      // Normalize bookings
+      const unique = combinedRaw.reduce((acc, current) => {
+        if (!current || !current.id) return acc;
+        const currentId = String(current.id);
+        
+        if (!acc.find(item => String(item.id) === currentId)) {
+          const propInfo = propertiesMap[current.property_id] || {};
+          const propertyTitle = propInfo.title || current.property_title || "N/A";
+          
+          let propertyImage = "https://via.placeholder.com/60?text=No+Img";
+          if (propInfo.image_urls && propInfo.image_urls.length > 0) {
+            propertyImage = propInfo.image_urls[0];
+          } else if (propInfo.photos && propInfo.photos.length > 0) {
+            propertyImage = propInfo.photos[0];
+          } else if (current.property_image) {
+            propertyImage = current.property_image;
+          }
+
+          const normalized = {
+            ...current,
+            property_title: propertyTitle,
+            property_image: propertyImage,
+            user_email: current.user_email || current.email || "N/A",
+            user_name: current.user_name || current.name || "N/A",
+            mobile_number: current.mobile_number || current.user_phone || current.phone || "N/A",
+          };
+          acc.push(normalized);
+        }
+        return acc;
+      }, []);
+
+      console.log("Total normalized bookings:", unique.length);
+      setAppointments(unique);
+      
+    } catch (err) {
+      console.error("Critical exception in fetchAppointments:", err);
+      setFetchError(`Exception: ${err.message}`);
+      setAppointments([]);
+    } finally {
+      setLoading(false);
     }
-    setAppointments(data);
-    setLoading(false);
+  };
+
+  const fetchFeedback = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('feedback')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setFeedback(data || []);
+    } catch (error) {
+      console.error("Error fetching feedback:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteFeedback = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this feedback?")) return;
+    try {
+      const { error } = await supabase.from('feedback').delete().eq('id', id);
+      if (error) throw error;
+      setFeedback(prev => prev.filter(item => item.id !== id));
+      alert("Feedback deleted successfully");
+    } catch (error) {
+      console.error("Error deleting feedback:", error);
+      alert("Error deleting feedback");
+    }
   };
 
   return (
@@ -252,7 +472,8 @@ export default function AdminDashboard() {
         {activeTab === "sellers" && <ListingTab title="Sellers" data={sellers} fetchData={fetchSellers} updateStatus={updateStatus} loading={loading} setEditingProperty={setEditingProperty} setShowEditModal={setShowEditModal} />}
         {activeTab === "leases" && <ListingTab title="Leases" data={leases} fetchData={fetchLeases} updateStatus={updateStatus} loading={loading} setEditingProperty={setEditingProperty} setShowEditModal={setShowEditModal} />}
         {activeTab === "rentals" && <ListingTab title="Rentals" data={rentals} fetchData={fetchRentals} updateStatus={updateStatus} loading={loading} setEditingProperty={setEditingProperty} setShowEditModal={setShowEditModal} />}
-        {activeTab === "appointments" && <AppointmentsTab appointments={appointments} fetchAppointments={fetchAppointments} loading={loading} />}
+        {activeTab === "appointments" && <AppointmentsTab appointments={appointments} fetchAppointments={fetchAppointments} loading={loading} fetchError={fetchError} />}
+        {activeTab === "feedback" && <FeedbackTab feedback={feedback} fetchFeedback={fetchFeedback} deleteFeedback={deleteFeedback} loading={loading} />}
 
         {showEditModal && editingProperty && (
           <EditPropertyModal 
@@ -288,6 +509,7 @@ function Sidebar({ activeTab, setActiveTab, handleLogout }) {
     ["leases", "📋 Leases"],
     ["rentals", "🔑 Rentals"],
     ["appointments", "📅 Appointments"],
+    ["feedback", "💬 Feedback"],
   ];
 
   return (
@@ -308,6 +530,20 @@ function Sidebar({ activeTab, setActiveTab, handleLogout }) {
           {label}
         </div>
       ))}
+      <div
+          onClick={handleLogout}
+          style={{
+            padding: 12,
+            borderRadius: 6,
+            marginTop: 20,
+            cursor: "pointer",
+            background: "transparent",
+            color: "#fff",
+            border: "1px solid #ff6b35"
+          }}
+        >
+          Logout
+      </div>
     </div>
   );
 }
@@ -332,26 +568,19 @@ function Overview() {
   const fetchOverviewData = async () => {
     setLoading(true);
     try {
-      const [users, properties] = await Promise.all([
+      const [users, properties, pendingProps] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact" }),
-        supabase.from("properties").select("id", { count: "exact" })
+        supabase.from("properties").select("id", { count: "exact" }),
+        supabase.from("properties").select("id", { count: "exact" }).eq("status", "pending")
       ]);
 
-      // Try appointments table first, then fallback to bookings
-      let appointments = await supabase.from("appointments").select("id", { count: "exact" });
-      if (!appointments.data && appointments.error) {
-        appointments = await supabase.from("bookings").select("id", { count: "exact" });
-      }
-
-      const pendingProps = await supabase
-        .from("properties")
-        .select("id", { count: "exact" })
-        .eq("status", "pending");
+      const { count: bCount, error: bErr } = await supabase.from("bookings").select("id", { count: "exact", head: true });
+      const appointmentsCount = bErr ? 0 : (bCount || 0);
 
       setOverviewData({
         totalUsers: users.count || 0,
         totalProperties: properties.count || 0,
-        totalAppointments: appointments.count || 0,
+        totalAppointments: appointmentsCount,
         pendingProperties: pendingProps.count || 0
       });
     } catch (error) {
@@ -492,6 +721,11 @@ function PropertiesTab({ properties, fetchProperties, setSelectedProperty, setSh
                 >
                   <h3 style={{ margin: "0 0 8px 0", color: "#000" }}>{p.title}</h3>
                   <p style={{ margin: 0, color: "#000", fontSize: "0.9rem" }}>Type: {p.property_listing_type}</p>
+                  {p.status === "rejected" && p.rejection_reason && (
+                    <p style={{ margin: "4px 0 0 0", color: "#dc2626", fontSize: "0.8rem" }}>
+                      <strong>Reason:</strong> {p.rejection_reason}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -618,6 +852,7 @@ function ListingTab({ title, data, fetchData, updateStatus, loading, setEditingP
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Contact Phone</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Contact Email</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Status</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Rejection Reason</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Images</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Actions</th>
                 </tr>
@@ -654,6 +889,9 @@ function ListingTab({ title, data, fetchData, updateStatus, loading, setEditingP
                       }}>
                         {p.status || "pending"}
                       </span>
+                    </td>
+                    <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.rejection_reason}>
+                      {p.rejection_reason || "-"}
                     </td>
                     <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
                       {Array.isArray(p.image_urls) && p.image_urls.length > 0 ? (
@@ -769,13 +1007,18 @@ function ListingTab({ title, data, fetchData, updateStatus, loading, setEditingP
   );
 }
 
-function AppointmentsTab({ appointments, fetchAppointments, loading }) {
+function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError }) {
   const [currentPage, setCurrentPage] = React.useState(0);
+  const [filter, setFilter] = React.useState("all"); // "all" or "accepted"
   const itemsPerPage = 3;
   
-  const totalPages = Math.ceil(appointments.length / itemsPerPage);
+  const filteredAppointments = filter === "accepted" 
+    ? appointments.filter(apt => apt.status === "confirmed" || apt.status === "accepted")
+    : appointments;
+
+  const totalPages = Math.ceil(filteredAppointments.length / itemsPerPage);
   const startIndex = currentPage * itemsPerPage;
-  const displayedAppointments = appointments.slice(startIndex, startIndex + itemsPerPage);
+  const displayedAppointments = filteredAppointments.slice(startIndex, startIndex + itemsPerPage);
   
   const goToPreviousPage = () => {
     setCurrentPage((prev) => Math.max(0, prev - 1));
@@ -785,23 +1028,144 @@ function AppointmentsTab({ appointments, fetchAppointments, loading }) {
     setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
   };
 
-  const updateAppointmentStatus = async (appointmentId, newStatus) => {
+  const updateAppointmentStatus = async (appointmentId, newStatus, selectedDate = null) => {
     try {
-      // Try appointments table first
-      let error = null;
-      const { error: appointmentsError } = await supabase
-        .from("appointments")
-        .update({ status: newStatus })
+      let rejectionReason = null;
+      if (newStatus === "rejected") {
+        rejectionReason = window.prompt("Please provide a reason for rejecting this appointment:");
+        if (rejectionReason === null) return; // Admin clicked Cancel
+        if (!rejectionReason.trim()) {
+          alert("A rejection reason is required.");
+          return;
+        }
+      }
+
+      const updateData = { 
+        status: newStatus,
+        rejection_reason: rejectionReason 
+      };
+      if (selectedDate) {
+        updateData.appointment_date = selectedDate.date;
+        updateData.appointment_time = selectedDate.time || '00:00:00';
+      }
+
+      // Only use bookings table
+      const { error: bookingsError } = await supabase
+        .from("bookings")
+        .update(updateData)
         .eq("id", appointmentId);
 
-      if (appointmentsError) {
-        // Try bookings table
-        const { error: bookingsError } = await supabase
-          .from("bookings")
-          .update({ status: newStatus })
-          .eq("id", appointmentId);
+      if (bookingsError) throw bookingsError;
 
-        if (bookingsError) throw bookingsError;
+      // Create notification for user when appointment status changes
+      if (["confirmed", "accepted", "rejected", "cancelled"].includes(newStatus)) {
+        try {
+          // Fetch appointment details to get user_id and property info
+          const { data: aptData, error: fetchAptError } = await supabase
+            .from("bookings")
+            .select("*")
+            .eq("id", appointmentId)
+            .single();
+            
+          if (fetchAptError) {
+             console.error("Error fetching booking details for notification:", fetchAptError.message);
+          }
+
+          if (aptData) {
+             let userId = aptData.user_id;
+
+             // If no user_id, try to find user by email (common for some bookings)
+             if (!userId && aptData.user_email) {
+                try {
+                  const { data: userData } = await supabase
+                    .from("profiles")
+                    .select("id")
+                    .eq("email", aptData.user_email)
+                    .single();
+                  
+                  if (userData) {
+                    userId = userData.id;
+                  } else {
+                    // Try auth users table as fallback
+                    const { data: authUsers } = await supabase.auth.admin.listUsers();
+                    const foundUser = authUsers?.users?.find(u => u.email === aptData.user_email);
+                    if (foundUser) userId = foundUser.id;
+                  }
+                } catch (err) {
+                  console.warn("Could not find user by email for appointment notification:", err);
+                }
+             }
+
+             if (userId) {
+                const propertyTitle = aptData.properties?.title || aptData.property_title || "Property";
+                const dateStr = aptData.appointment_date ? ` on ${aptData.appointment_date}` : "";
+                
+                const isAccepted = newStatus === "confirmed" || newStatus === "accepted";
+                const notifType = isAccepted ? "appointment_confirmed" : "appointment_rejected";
+                const notifTitle = isAccepted ? "Appointment Accepted!" : "Appointment Update";
+                const notifMessage = isAccepted 
+                    ? `Your appointment for "${propertyTitle}"${dateStr} has been accepted by the admin.`
+                    : `Your appointment for "${propertyTitle}"${dateStr} has been rejected. Reason: ${rejectionReason}`;
+
+                const { error: notifError } = await supabase.from("notifications").insert({
+                    user_id: userId,
+                    type: notifType,
+                    title: notifTitle,
+                    message: notifMessage,
+                    read: false,
+                    created_at: new Date().toISOString()
+                });
+                
+                if (notifError) console.warn("Error creating appointment notification:", notifError);
+                else console.log(`Appointment notification (${newStatus}) sent to user:`, userId);
+
+                // Send email notification via EmailJS (Much easier and works for everyone)
+                if (["confirmed", "accepted", "rejected"].includes(newStatus) && (aptData.user_email || aptData.email)) {
+                  try {
+                    const userEmail = aptData.user_email || aptData.email;
+                    const userName = aptData.user_name || "Valued Customer";
+                    const propertyTitle = aptData.properties?.title || aptData.property_title || "Property";
+                    
+                    // EmailJS Parameters
+                    const templateParams = {
+                      to_name: userName,
+                      to_email: userEmail,
+                      property_title: propertyTitle,
+                      status: newStatus === "rejected" ? "Rejected" : "Accepted",
+                      message: newStatus === "rejected" 
+                        ? `Unfortunately, your appointment has been rejected. Reason: ${rejectionReason}` 
+                        : `Great news! Your appointment has been accepted. We look forward to seeing you.`,
+                      appointment_date: aptData.appointment_date,
+                      appointment_time: aptData.appointment_time,
+                    };
+
+                    console.log(`Attempting to send ${newStatus} email to: "${userEmail}" via EmailJS...`);
+                    
+                    // NOTE: You need to replace these with your own EmailJS keys
+                    // Service ID, Template ID, and Public Key from https://dashboard.emailjs.com/
+                    const SERVICE_ID = "service_xxxxxxx"; // Replace with your Service ID
+                    const TEMPLATE_ID = "template_xxxxxxx"; // Replace with your Template ID
+                    const PUBLIC_KEY = "xxxxxxxxxxxxxxxxx"; // Replace with your Public Key
+
+                    if (SERVICE_ID === "service_xxxxxxx") {
+                      console.warn("EmailJS not configured yet. Please provide your keys in Admindashboard.jsx");
+                    } else {
+                      await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+                      console.log("EmailJS send successful.");
+                      alert(`✅ ${newStatus === "rejected" ? "Rejection" : "Acceptance"} email sent to ${userEmail}`);
+                    }
+                  } catch (emailErr) {
+                    console.error("Error sending email via EmailJS:", emailErr);
+                    // Don't alert here to avoid annoying the admin if the DB update worked
+                  }
+                }
+             } else {
+                console.warn("Could not find user_id for appointment notification (no ID and email lookup failed)");
+             }
+          }
+        } catch (notifErr) {
+          console.error("Error in appointment notification logic:", notifErr);
+        }
       }
 
       alert(`Appointment ${newStatus} successfully!`);
@@ -814,21 +1178,93 @@ function AppointmentsTab({ appointments, fetchAppointments, loading }) {
 
   return (
     <div>
-      <button onClick={fetchAppointments} style={{ padding: "10px 20px", marginBottom: "20px", cursor: "pointer" }}>
-        {loading ? "Loading..." : "Load Appointments"}
-      </button>
+      <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <button onClick={fetchAppointments} style={{ padding: "10px 20px", cursor: "pointer", backgroundColor: "#1e40af", color: "#fff", border: "none", borderRadius: "6px" }}>
+          {loading ? "Loading..." : "🔄 Refresh"}
+        </button>
+        
+        <div style={{ display: 'flex', background: '#fff', padding: '4px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+          <button 
+            onClick={() => { setFilter("all"); setCurrentPage(0); }}
+            style={{ 
+              padding: '6px 12px', 
+              border: 'none', 
+              borderRadius: '6px',
+              cursor: 'pointer',
+              background: filter === "all" ? "#ff6b35" : "transparent",
+              color: filter === "all" ? "#fff" : "#64748b",
+              fontWeight: "500"
+            }}
+          >
+            All Bookings
+          </button>
+          <button 
+            onClick={() => { setFilter("accepted"); setCurrentPage(0); }}
+            style={{ 
+              padding: '6px 12px', 
+              border: 'none', 
+              borderRadius: '6px',
+              cursor: 'pointer',
+              background: filter === "accepted" ? "#059669" : "transparent",
+              color: filter === "accepted" ? "#fff" : "#64748b",
+              fontWeight: "500"
+            }}
+          >
+            ✅ Accepted Only
+          </button>
+        </div>
 
-      {appointments.length === 0 ? (
-        <p style={{ marginTop: 12 }}>No appointments found.</p>
+        {fetchError && (
+          <span style={{ color: '#dc2626', fontSize: '0.9rem', fontWeight: '500' }}>
+            ⚠️ {fetchError}
+          </span>
+        )}
+      </div>
+
+      {filteredAppointments.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+          <p style={{ color: fetchError ? '#dc2626' : '#6b7280', margin: 0, fontWeight: fetchError ? '500' : 'normal' }}>
+            {loading 
+              ? "Checking for appointments..." 
+              : fetchError 
+                ? `Error: ${fetchError}` 
+                : filter === "accepted" 
+                  ? "No accepted appointments found." 
+                  : "No appointments found."
+            }
+          </p>
+          {fetchError && (
+            <button 
+              onClick={fetchAppointments} 
+              style={{ 
+                marginTop: '15px', 
+                padding: '8px 16px', 
+                backgroundColor: '#1e40af', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: '4px', 
+                cursor: 'pointer' 
+              }}
+            >
+              Retry
+            </button>
+          )}
+        </div>
       ) : (
         <>
           <div style={{ overflowX: "auto", marginTop: 12, marginBottom: 20 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", color: "#000" }}>
               <thead>
                 <tr>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Image</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Property Title</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Location</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>User Name</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>User Email</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Mobile Number</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Message</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Rejection Reason</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Cancel Reason</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Date</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Time</th>
                   <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Status</th>
@@ -838,18 +1274,64 @@ function AppointmentsTab({ appointments, fetchAppointments, loading }) {
               </thead>
               <tbody>
                 {displayedAppointments.map((apt) => {
-                  const appointmentDate = new Date(`${apt.appointment_date}T${apt.appointment_time}`);
+                  const appointmentDateStr = apt.appointment_date && apt.appointment_time 
+                    ? `${apt.appointment_date}T${apt.appointment_time}`
+                    : apt.appointment_date;
+                  const appointmentDate = appointmentDateStr ? new Date(appointmentDateStr) : null;
+                  const proposedDates = apt.proposed_dates || [];
+                  
+                  // Use local properties from appointment data if relation fetch fails
+                  const propertyTitle = apt.property_title || "N/A";
+                  const propertyImage = apt.property_image || "https://via.placeholder.com/60?text=No+Img";
+                  
                   return (
                     <tr key={apt.id}>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{apt.property_title || "N/A"}</td>
+                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
+                        <img 
+                          src={propertyImage} 
+                          alt="Prop" 
+                          style={{ width: "60px", height: "60px", objectFit: "cover", borderRadius: "4px" }}
+                          onError={(e) => { e.target.onerror = null; e.target.src = "https://via.placeholder.com/60?text=Error"; }}
+                        />
+                      </td>
+                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{propertyTitle}</td>
+                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{apt.property_location || "N/A"}</td>
+                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{apt.user_name || "N/A"}</td>
                       <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{apt.user_email || "N/A"}</td>
                       <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{apt.mobile_number || "N/A"}</td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
-                        {appointmentDate.toLocaleDateString()}
+                      <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={apt.message}>
+                        {apt.message || "-"}
+                      </td>
+                      <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={apt.rejection_reason}>
+                        {apt.rejection_reason || "-"}
+                      </td>
+                      <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={apt.cancellation_reason}>
+                        {apt.cancellation_reason || "-"}
                       </td>
                       <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
-                        {appointmentDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                        {proposedDates.length > 0 ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            {proposedDates.map((pd, idx) => (
+                              <div key={idx} style={{ 
+                                fontSize: "0.8rem", 
+                                padding: "4px", 
+                                backgroundColor: apt.appointment_date === pd.date && apt.appointment_time === pd.time ? "#d1fae5" : "#f3f4f6",
+                                borderRadius: "4px",
+                                border: apt.appointment_date === pd.date && apt.appointment_time === pd.time ? "1px solid #059669" : "1px solid #e5e7eb"
+                              }}>
+                                {new Date(pd.date).toLocaleDateString()}{pd.time && pd.time !== '00:00:00' ? ` @ ${pd.time}` : " (Date Only)"}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          appointmentDate ? appointmentDate.toLocaleDateString() : "N/A"
+                        )}
                       </td>
+                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
+                          {appointmentDate && apt.appointment_time && apt.appointment_time !== '00:00:00' 
+                            ? appointmentDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) 
+                            : "Date Only"}
+                        </td>
                       <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
                         <span style={{
                           padding: "4px 8px",
@@ -868,21 +1350,45 @@ function AppointmentsTab({ appointments, fetchAppointments, loading }) {
                       </td>
                       <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
                         <div style={{ display: "flex", gap: "5px", flexDirection: "column" }}>
-                          <button
-                            onClick={() => updateAppointmentStatus(apt.id, "confirmed")}
-                            disabled={apt.status === "confirmed" || apt.status === "accepted"}
-                            style={{
-                              padding: "6px 12px",
-                              backgroundColor: (apt.status === "confirmed" || apt.status === "accepted") ? "#9ca3af" : "#059669",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: "4px",
-                              cursor: (apt.status === "confirmed" || apt.status === "accepted") ? "not-allowed" : "pointer",
-                              fontSize: "0.85rem"
-                            }}
-                          >
-                            ✓ Accept
-                          </button>
+                          {proposedDates.length > 0 && apt.status === "pending" ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                              <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "#6b7280" }}>Select a confirmed date:</div>
+                              {proposedDates.map((pd, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={() => updateAppointmentStatus(apt.id, "confirmed", pd)}
+                                  style={{
+                                    padding: "6px 12px",
+                                    backgroundColor: "#059669",
+                                    color: "#fff",
+                                    border: "none",
+                                    borderRadius: "4px",
+                                    cursor: "pointer",
+                                    fontSize: "0.75rem",
+                                    textAlign: "left"
+                                  }}
+                                >
+                                  ✓ Accept {new Date(pd.date).toLocaleDateString()}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => updateAppointmentStatus(apt.id, "confirmed")}
+                              disabled={apt.status === "confirmed" || apt.status === "accepted"}
+                              style={{
+                                padding: "6px 12px",
+                                backgroundColor: (apt.status === "confirmed" || apt.status === "accepted") ? "#9ca3af" : "#059669",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "4px",
+                                cursor: (apt.status === "confirmed" || apt.status === "accepted") ? "not-allowed" : "pointer",
+                                fontSize: "0.85rem"
+                              }}
+                            >
+                              ✓ Accept Current
+                            </button>
+                          )}
                           <button
                             onClick={() => updateAppointmentStatus(apt.id, "rejected")}
                             disabled={apt.status === "rejected" || apt.status === "cancelled"}
@@ -956,206 +1462,146 @@ function AppointmentsTab({ appointments, fetchAppointments, loading }) {
   );
 }
 
-function EditPropertyModal({ property, onClose, onSave }) {
-  const [formData, setFormData] = useState({
-    title: property.title || "",
-    type: property.type || "",
-    area: property.area || "",
-    bedrooms: property.bedrooms || "",
-    bathrooms: property.bathrooms || "",
-    address: property.address || "",
-    city: property.city || "",
-    price: property.price || "",
-    description: property.description || "",
-    contact_name: property.contact_name || "",
-    contact_phone: property.contact_phone || "",
-    contact_email: property.contact_email || "",
-    deposit: property.deposit || "",
-    min_duration: property.min_duration || "",
-    parking: property.parking || "",
-    furnished_status: property.furnished_status || "",
-    balcony: property.balcony || "",
-    nearby_places: property.nearby_places || "",
-  });
-  const [saving, setSaving] = useState(false);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    if (name === "price") {
-      const lt = property.property_listing_type;
-      if ((lt === "Rent" || lt === "Lease") && value.length > 8) {
-        alert("Maximum 8 digits allowed");
-        return;
-      }
-      if (lt === "Sell" && value.length > 9) {
-        alert("Maximum 9 digits allowed");
-        return;
-      }
-    }
-    setFormData(prev => ({ ...prev, [name]: value }));
+function FeedbackTab({ feedback, fetchFeedback, deleteFeedback, loading }) {
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const itemsPerPage = 5;
+  
+  const totalPages = Math.ceil(feedback.length / itemsPerPage);
+  const startIndex = currentPage * itemsPerPage;
+  const displayedFeedback = feedback.slice(startIndex, startIndex + itemsPerPage);
+  
+  const goToPreviousPage = () => {
+    setCurrentPage((prev) => Math.max(0, prev - 1));
   };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-
-    try {
-      const { error } = await supabase
-        .from("properties")
-        .update({
-          title: formData.title,
-          type: formData.type,
-          area: formData.area,
-          bedrooms: formData.bedrooms || null,
-          bathrooms: formData.bathrooms || null,
-          address: formData.address,
-          city: formData.city,
-          price: Number(formData.price),
-          description: formData.description,
-          contact_name: formData.contact_name,
-          contact_phone: formData.contact_phone,
-          contact_email: formData.contact_email,
-          deposit: formData.deposit || null,
-          min_duration: formData.min_duration || null,
-          parking: formData.parking,
-          furnished_status: formData.furnished_status,
-          balcony: formData.balcony,
-          nearby_places: formData.nearby_places,
-        })
-        .eq("id", property.id);
-
-      if (error) throw error;
-
-      alert("Property updated successfully!");
-      onSave();
-    } catch (error) {
-      console.error("Error updating property:", error);
-      alert("Error updating property: " + error.message);
-    } finally {
-      setSaving(false);
-    }
+  
+  const goToNextPage = () => {
+    setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000 }}>
-      <div style={{ background: "#fff", padding: 30, borderRadius: 12, maxWidth: "600px", width: "90%", maxHeight: "90vh", overflow: "auto" }}>
-        <h2 style={{ marginBottom: 20 }}>Edit Property</h2>
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: "grid", gap: "15px" }}>
-            <div>
-              <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Title</label>
-              <input type="text" name="title" value={formData.title} onChange={handleChange} required style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-            </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Type</label>
-              <input type="text" name="type" value={formData.type} onChange={handleChange} required style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Area</label>
-                <input type="text" name="area" value={formData.area} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Price</label>
-                <input type="number" name="price" value={formData.price} onChange={handleChange} required style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Bedrooms</label>
-                <input type="number" name="bedrooms" value={formData.bedrooms} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Bathrooms</label>
-                <input type="number" name="bathrooms" value={formData.bathrooms} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Parking</label>
-                <input type="text" name="parking" value={formData.parking} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Furnished</label>
-                <input type="text" name="furnished_status" value={formData.furnished_status} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Balcony</label>
-                <input type="text" name="balcony" value={formData.balcony} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-            </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Nearby Places</label>
-              <textarea name="nearby_places" value={formData.nearby_places} onChange={handleChange} rows="2" style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-            </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Address</label>
-              <input type="text" name="address" value={formData.address} onChange={handleChange} required style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-            </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>City</label>
-              <input type="text" name="city" value={formData.city} onChange={handleChange} required style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-            </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Description</label>
-              <textarea name="description" value={formData.description} onChange={handleChange} rows="4" style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Contact Name</label>
-                <input type="text" name="contact_name" value={formData.contact_name} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Contact Phone</label>
-                <input type="tel" name="contact_phone" value={formData.contact_phone} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-            </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Contact Email</label>
-              <input type="email" name="contact_email" value={formData.contact_email} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Deposit</label>
-                <input type="number" name="deposit" value={formData.deposit} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Min Duration</label>
-                <input type="text" name="min_duration" value={formData.min_duration} onChange={handleChange} style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "4px" }} />
-              </div>
-            </div>
+    <div>
+      <button onClick={fetchFeedback} style={{ padding: "10px 20px", marginBottom: "20px", cursor: "pointer" }}>
+        {loading ? "Loading..." : "Load Feedback"}
+      </button>
+
+      {feedback.length === 0 ? (
+        <p style={{ marginTop: 12 }}>No feedback found.</p>
+      ) : (
+        <>
+          <div style={{ overflowX: "auto", marginTop: 12, marginBottom: 20 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", color: "#000" }}>
+              <thead>
+                <tr>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Date</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Name</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Rating</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Message</th>
+                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedFeedback.map((item) => (
+                  <tr key={item.id}>
+                    <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
+                      {new Date(item.created_at).toLocaleDateString()}
+                    </td>
+                    <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{item.name}</td>
+                    <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
+                      <span style={{ color: "#f59e0b", fontWeight: "bold" }}>
+                        {"★".repeat(item.rating)}
+                        <span style={{ color: "#d1d5db" }}>{"★".repeat(5 - item.rating)}</span>
+                      </span>
+                    </td>
+                    <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: "400px" }}>
+                      {item.message}
+                    </td>
+                    <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
+                      <button
+                        onClick={() => deleteFeedback(item.id)}
+                        style={{
+                          padding: "6px 12px",
+                          backgroundColor: "#dc2626",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontSize: "0.85rem"
+                        }}
+                      >
+                        🗑️ Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div style={{ display: "flex", gap: "10px", marginTop: "20px", justifyContent: "flex-end" }}>
-            <button type="button" onClick={onClose} style={{ padding: "10px 20px", backgroundColor: "#6b7280", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}>
-              Cancel
+
+          <div style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 16,
+            marginTop: 20
+          }}>
+            <button
+              onClick={goToPreviousPage}
+              disabled={currentPage === 0}
+              style={{
+                padding: "10px 16px",
+                backgroundColor: currentPage === 0 ? "#d1d5db" : "#1e40af",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                cursor: currentPage === 0 ? "not-allowed" : "pointer",
+                fontSize: "1.2rem",
+                fontWeight: "bold"
+              }}
+            >
+              ← Previous
             </button>
-            <button type="submit" disabled={saving} style={{ padding: "10px 20px", backgroundColor: saving ? "#9ca3af" : "#1e40af", color: "#fff", border: "none", borderRadius: "6px", cursor: saving ? "not-allowed" : "pointer" }}>
-              {saving ? "Saving..." : "Save Changes"}
+            <span style={{ color: "#000", fontSize: "1rem", fontWeight: "500" }}>
+              Page {currentPage + 1} of {totalPages}
+            </span>
+            <button
+              onClick={goToNextPage}
+              disabled={currentPage === totalPages - 1}
+              style={{
+                padding: "10px 16px",
+                backgroundColor: currentPage === totalPages - 1 ? "#d1d5db" : "#1e40af",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                cursor: currentPage === totalPages - 1 ? "not-allowed" : "pointer",
+                fontSize: "1.2rem",
+                fontWeight: "bold"
+              }}
+            >
+              Next →
             </button>
           </div>
-        </form>
-      </div>
+        </>
+      )}
     </div>
   );
 }
 
 function PropertyModal({ property, onClose }) {
+  if (!property) return null;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center" }}>
-      <div style={{ background: "#fff", padding: 20, borderRadius: 8, maxWidth: "500px", width: "100%", color: "#000" }}>
-        <h2 style={{ color: "#000" }}>{property.title}</h2>
-        <p style={{ color: "#000" }}><strong>Type:</strong> {property.type}</p>
-        <p style={{ color: "#000" }}><strong>Category:</strong> {property.property_listing_type}</p>
-        <p style={{ color: "#000" }}><strong>Price:</strong> {property.price}</p>
-        <p style={{ color: "#000" }}><strong>Location:</strong> {property.address}, {property.city}</p>
-        <p style={{ color: "#000" }}><strong>Bedrooms:</strong> {property.bedrooms}</p>
-        <p style={{ color: "#000" }}><strong>Bathrooms:</strong> {property.bathrooms}</p>
-        <p style={{ color: "#000" }}><strong>Parking:</strong> {property.parking || "N/A"}</p>
-        <p style={{ color: "#000" }}><strong>Furnished:</strong> {property.furnished_status || "N/A"}</p>
-        <p style={{ color: "#000" }}><strong>Balcony:</strong> {property.balcony || "N/A"}</p>
-        <p style={{ color: "#000" }}><strong>Nearby:</strong> {property.nearby_places || "N/A"}</p>
-        <button onClick={onClose} style={{ marginTop: "20px", padding: "8px 16px", cursor: "pointer" }}>Close</button>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000 }}>
+      <div style={{ background: "#fff", padding: 20, borderRadius: 8, maxWidth: "600px", width: "90%", maxHeight: "80vh", overflow: "auto", color: "#000" }}>
+        <h2>{property.title}</h2>
+        <img src={property.image_urls?.[0] || property.photos?.[0] || "https://via.placeholder.com/300"} alt={property.title} style={{ width: "100%", height: "200px", objectFit: "cover", borderRadius: 8 }} />
+        <p><strong>Type:</strong> {property.type}</p>
+        <p><strong>Price:</strong> {property.price}</p>
+        <p><strong>Description:</strong> {property.description}</p>
+        <p><strong>Address:</strong> {property.address}, {property.city}</p>
+        {property.status === "rejected" && property.rejection_reason && (
+          <p style={{ color: "#dc2626" }}><strong>Rejection Reason:</strong> {property.rejection_reason}</p>
+        )}
+        <button onClick={onClose} style={{ marginTop: 20, padding: "10px 20px", background: "#1e40af", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>Close</button>
       </div>
     </div>
-    );
+  );
 }

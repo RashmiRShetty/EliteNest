@@ -10,6 +10,8 @@ export default function MessagesPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let subscription;
+
     const loadMessages = async () => {
       try {
         const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -21,7 +23,6 @@ export default function MessagesPage() {
         setUser(currentUser);
 
         // Fetch messages from messages table
-        // Note: You may need to create a 'messages' table
         const { data, error } = await supabase
           .from("messages")
           .select("*")
@@ -29,11 +30,28 @@ export default function MessagesPage() {
           .order("created_at", { ascending: false });
 
         if (error) {
-          console.warn("Messages table may not exist:", error);
-          setMessages([]);
+          console.warn("Messages table may not exist or error fetching:", error);
+          if (messages.length === 0) {
+             setMessages([]);
+          }
         } else {
           setMessages(data || []);
         }
+
+        // Set up real-time subscription
+        subscription = supabase
+          .channel('public:messages')
+          .on('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'messages', 
+            filter: `user_id=eq.${currentUser.id}` 
+          }, (payload) => {
+            console.log("Real-time message received:", payload);
+            setMessages(prev => [payload.new, ...prev]);
+          })
+          .subscribe();
+
       } catch (error) {
         console.error("Error loading messages:", error);
         setMessages([]);
@@ -43,6 +61,12 @@ export default function MessagesPage() {
     };
 
     loadMessages();
+
+    return () => {
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
+    };
   }, [navigate]);
 
   if (loading) {
