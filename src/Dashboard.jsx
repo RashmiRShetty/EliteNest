@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "./supabase";
 import { fetchProperties } from "./utils/properties";
-import "./App.css";
+import "./Dashboard.css";
 
 const mockData = {
   savedProperties: 7,
@@ -168,26 +168,61 @@ export default function Dashboard() {
 
       {/* Dashboard Content */}
       <div className={`dashboard-content ${sidebarOpen ? 'content-shifted' : ''}`}>
-        {/* Dashboard Stats */}
-        <div className="dashboard-stats">
-          <div className="stat-card">
-            <h3>Rent Due</h3>
-            <p className="stat-value">{mockData.rentDue}</p>
-            <p className="stat-amount">{mockData.rentAmount}</p>
+          {/* Premium Hero + Dashboard Stats */}
+          <div className="dashboard-hero">
+            <div className="hero-left">
+              <h2 className="hero-welcome">Welcome back, {greeting}</h2>
+              <p className="hero-sub">Here's a quick summary of your account and properties.</p>
+              <div className="hero-actions">
+                <button className="btn-primary hero-btn" onClick={() => navigate('/properties')}>Explore Listings</button>
+                <button className="btn-outline hero-btn" onClick={handleSellPropertyClick}>List a Property</button>
+              </div>
+            </div>
+            <div className="hero-right">
+              <div className="user-card">
+                <div className="user-avatar">{(greeting || 'U')[0].toUpperCase()}</div>
+                <div className="user-info">
+                  <div className="user-name">{greeting}</div>
+                  <div className="user-provider">Connected with {provider}</div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="stat-card">
-            <h3>Saved Properties</h3>
-            <p className="stat-value">{mockData.savedProperties}</p>
+
+          <div className="dashboard-stats">
+            <div className="stat-card">
+              <div className="stat-icon">💸</div>
+              <div className="stat-body">
+                <h4>Rent Due</h4>
+                <div className="stat-value">{mockData.rentAmount}</div>
+                <div className="stat-aux">{mockData.rentDue}</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon">🏷️</div>
+              <div className="stat-body">
+                <h4>Saved</h4>
+                <div className="stat-value">{mockData.savedProperties}</div>
+                <div className="stat-aux">Saved properties</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon">✉️</div>
+              <div className="stat-body">
+                <h4>Messages</h4>
+                <div className="stat-value">{mockData.messages}</div>
+                <div className="stat-aux">Unread messages</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon">🔔</div>
+              <div className="stat-body">
+                <h4>Notifications</h4>
+                <div className="stat-value">{mockData.notifications}</div>
+                <div className="stat-aux">Recent alerts</div>
+              </div>
+            </div>
           </div>
-          <div className="stat-card">
-            <h3>Messages</h3>
-            <p className="stat-value">{mockData.messages}</p>
-          </div>
-          <div className="stat-card">
-            <h3>Notifications</h3>
-            <p className="stat-value">{mockData.notifications}</p>
-          </div>
-        </div>
 
         {/* Quick Actions */}
         <div className="quick-actions">

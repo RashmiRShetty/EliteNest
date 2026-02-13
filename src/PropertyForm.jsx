@@ -465,7 +465,7 @@ const PropertyForm = () => {
   const MapModal = MapModalContent;
 
   return (
-    <div className="property-form-container">
+    <div className="property-form-container" style={{ paddingTop: "40px" }}>
       {/* LEFT SIDE - MARKETING */}
       <div className="form-left-section">
         <div className="marketing-content">

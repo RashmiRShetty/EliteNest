@@ -229,7 +229,7 @@ function PropertyDetailsPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#f9fafb", padding: "100px 20px 40px" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: "#f9fafb", padding: "100px 0 40px" }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         
         {/* BACK BUTTON */}
@@ -253,52 +253,55 @@ function PropertyDetailsPage() {
         }}>
           
           {/* HEADER SECTION */}
-          <div style={{ padding: "30px", borderBottom: "1px solid #eee" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "15px" }}>
+          <div style={{ padding: "34px 24px", borderBottom: "1px solid #eee", background: "linear-gradient(180deg, #f8fafc, #ffffff)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px", marginBottom: "10px" }}>
               <div style={{ flex: 1 }}>
-                <h1 style={{ margin: 0, fontSize: "2.5rem", color: "#111827", marginBottom: "10px" }}>
+                <h1 style={{ margin: 0, fontSize: "2.5rem", color: "#111827", marginBottom: "8px" }}>
                   {property.title}
                 </h1>
-                <div style={{ display: "flex", alignItems: "center", gap: "15px", flexWrap: "wrap" }}>
-                  <p style={{ display: "flex", alignItems: "center", gap: "5px", color: "#6b7280", margin: 0 }}>
-                    <MapPin size={18} /> {property.address || property.location}
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                  <p style={{ display: "flex", alignItems: "center", gap: "5px", color: "#6b7280", margin: 0, fontSize: "0.95rem" }}>
+                    <MapPin size={16} /> {property.address || property.location}
                   </p>
-                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                    <button 
-                      onClick={() => {
-                        const destinationLat = (property.lat && !isNaN(property.lat)) ? property.lat : 12.9762;
-                        const destinationLng = (property.lng && !isNaN(property.lng)) ? property.lng : 77.6033;
-                        const destination = `${destinationLat},${destinationLng}`;
-                        const url = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
-                        window.open(url, '_blank');
-                      }}
-                      style={{
-                        padding: "8px 16px",
-                        backgroundColor: "#4285f4",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "8px",
-                        cursor: "pointer",
-                        fontSize: "0.9rem",
-                        fontWeight: "500"
-                      }}
-                    >
-                      🧭 Get Directions
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => {
+                      const fullAddress = property.address || property.location || '';
+                      const encodedAddress = encodeURIComponent(fullAddress);
+                      const url = `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`;
+                      window.open(url, '_blank');
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      backgroundColor: "#4285f4",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontSize: "0.85rem",
+                      fontWeight: "500"
+                    }}
+                  >
+                    🧭 Directions
+                  </button>
                   {property.verified && (
-                    <span style={{ color: "#059669", display: "flex", alignItems: "center", gap: "4px", fontSize: "0.9rem", fontWeight: "bold" }}>
-                      <ShieldCheck size={18} /> Verified Property
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", fontWeight: "600", color: "#065f46", backgroundColor: "#d1fae5", padding: "6px 10px", borderRadius: "9999px" }}>
+                      <ShieldCheck size={14} /> Verified
                     </span>
                   )}
                 </div>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "12px" }}>
+                  <span style={{ backgroundColor: "#eef2ff", color: "#1e40af", padding: "6px 10px", borderRadius: "9999px", fontSize: "0.8rem", fontWeight: 600, textTransform: "capitalize" }}>{property.type}</span>
+                  {property.bedrooms && <span style={{ backgroundColor: "#f1f5f9", color: "#334155", padding: "6px 10px", borderRadius: "9999px", fontSize: "0.8rem", fontWeight: 600 }}>{property.bedrooms} BHK</span>}
+                  {property.area && <span style={{ backgroundColor: "#f1f5f9", color: "#334155", padding: "6px 10px", borderRadius: "9999px", fontSize: "0.8rem", fontWeight: 600 }}>{property.area} sq ft</span>}
+                  {property.furnished && <span style={{ backgroundColor: "#f1f5f9", color: "#334155", padding: "6px 10px", borderRadius: "9999px", fontSize: "0.8rem", fontWeight: 600, textTransform: "capitalize" }}>{property.furnished}</span>}
+                </div>
               </div>
-              <div style={{ textAlign: "right" }}>
+              <div style={{ textAlign: "right", minWidth: "150px" }}>
                 <h2 style={{ color: "#1e40af", fontSize: "2.5rem", margin: 0, fontWeight: "bold" }}>
                   ₹{property.price.toLocaleString()}
                 </h2>
                 <p style={{ color: "#6b7280", margin: "5px 0 0 0" }}>
-                  {property.type === 'sale' ? 'For Sale' : property.type === 'rent' ? '/month' : '/month'}
+                  {property.type === 'sell' ? 'For Sale' : property.type === 'rent' ? '/month' : '/month'}
                 </p>
               </div>
             </div>
@@ -306,7 +309,7 @@ function PropertyDetailsPage() {
 
           {/* PHOTO GALLERY */}
           {property.photos && property.photos.length > 0 && (
-            <div style={{ padding: "30px", borderBottom: "1px solid #eee" }}>
+            <div style={{ padding: "30px 10px", borderBottom: "1px solid #eee" }}>
               <div style={{ marginBottom: "15px" }}>
                 <h3 style={{ margin: "0 0 15px 0", fontSize: "1.5rem" }}>Photos</h3>
               </div>
@@ -407,7 +410,7 @@ function PropertyDetailsPage() {
           )}
 
           {/* DETAILS GRID */}
-          <div style={{ padding: "30px", display: "grid", gridTemplateColumns: "2fr 1fr", gap: "40px" }}>
+          <div style={{ padding: "30px 10px", display: "grid", gridTemplateColumns: "2fr 1fr", gap: "40px" }}>
             
             {/* LEFT COLUMN - MAIN DETAILS */}
             <div>
@@ -531,6 +534,38 @@ function PropertyDetailsPage() {
                 </div>
               )}
 
+              {/* LOCATION DETAILS */}
+              <div style={{ marginBottom: "30px" }}>
+                <h3 style={{ fontSize: "1.5rem", marginBottom: "20px", color: "#111827" }}>Location Details</h3>
+                <div style={{ 
+                  display: "grid", 
+                  gridTemplateColumns: "repeat(3, 1fr)", 
+                  gap: "15px" 
+                }}>
+                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
+                      <MapPin size={18} color="#1e40af" />
+                      <strong>Address</strong>
+                    </div>
+                    <p style={{ margin: 0, color: "#6b7280" }}>{property.address || property.location || "-"}</p>
+                  </div>
+                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
+                      <MapPin size={18} color="#1e40af" />
+                      <strong>City</strong>
+                    </div>
+                    <p style={{ margin: 0, color: "#6b7280" }}>{property.city || "-"}</p>
+                  </div>
+                  <div style={{ padding: "15px", backgroundColor: "#f9fafb", borderRadius: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
+                      <MapPin size={18} color="#1e40af" />
+                      <strong>Nearby Places</strong>
+                    </div>
+                    <p style={{ margin: 0, color: "#6b7280" }}>{property.nearby_places || "-"}</p>
+                  </div>
+                </div>
+              </div>
+
               {/* PRICING DETAILS */}
               <div style={{ marginBottom: "30px" }}>
                 <h3 style={{ fontSize: "1.5rem", marginBottom: "20px", color: "#111827" }}>Pricing Details</h3>
@@ -545,7 +580,7 @@ function PropertyDetailsPage() {
                       <strong>Rent/Price</strong>
                     </div>
                     <p style={{ margin: 0, color: "#1e40af", fontSize: "1.2rem", fontWeight: "bold" }}>
-                      ₹{property.price.toLocaleString()}{property.type === 'sale' ? '' : '/month'}
+                      ₹{property.price.toLocaleString()}{property.type === 'sell' ? '' : '/month'}
                     </p>
                   </div>
                   {property.deposit > 0 && (
@@ -601,20 +636,33 @@ function PropertyDetailsPage() {
                   onClick={() => setShowBookingModal(true)}
                   style={{
                     width: "100%",
-                    padding: "18px",
+                    padding: "20px",
                     backgroundColor: "#1e40af",
                     color: "#fff",
                     border: "none",
-                    borderRadius: "8px",
-                    fontSize: "1.1rem",
-                    fontWeight: "bold",
+                    borderRadius: "12px",
                     cursor: "pointer",
-                    transition: "background-color 0.3s",
-                    boxShadow: "0 4px 6px rgba(30, 64, 175, 0.2)"
+                    fontSize: "1.1rem",
+                    fontWeight: "600",
+                    transition: "all 0.3s ease",
+                    boxShadow: "0 4px 12px rgba(30, 64, 175, 0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "10px"
                   }}
-                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#2563eb"}
-                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#1e40af"}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.backgroundColor = "#2563eb";
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                    e.currentTarget.style.boxShadow = "0 6px 16px rgba(30, 64, 175, 0.4)";
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.backgroundColor = "#1e40af";
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 4px 12px rgba(30, 64, 175, 0.3)";
+                  }}
                 >
+                  <CalendarCheck size={20} />
                   Book Appointment
                 </button>
 
