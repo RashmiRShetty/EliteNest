@@ -4,6 +4,11 @@ import { getArray } from "../utils/properties.js";
 import EditPropertyModal from "../components/EditPropertyModal";
 import emailjs from "@emailjs/browser";
 
+// EmailJS Configuration
+const SERVICE_ID = "service_lgq3cwf";
+const TEMPLATE_ID = "template_md0v59s";
+const PUBLIC_KEY = "DM42XVFihQTMWzqW3";
+
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [users, setUsers] = useState([]);
@@ -244,6 +249,41 @@ export default function AdminDashboard() {
         } else {
           console.warn("Could not find user_id for property notification. Email:", property.contact_email);
           alert("Warning: Property status updated, but could not find the user to notify. (Missing user_id and email lookup failed)");
+        }
+
+        // --- SEPARATE EMAIL LOGIC (Independent of userId) ---
+        if (property.contact_email || property.email) {
+          try {
+            const userEmail = property.contact_email || property.email;
+            const userName = property.contact_name || "Seller";
+            const propertyTitle = property.title || "Property";
+            
+            const templateParams = {
+                to_name: userName,
+                to_email: userEmail,
+                property_title: propertyTitle,
+                status: newStatus === "rejected" ? "Listing Request Declined" : "Listing Request Approved",
+                message: newStatus === "rejected" 
+                  ? `We have reviewed your request to list "${propertyTitle}" and unfortunately, we cannot approve it at this time. \n\nReason for decision: ${rejectionReason}` 
+                  : `Great news! Your request to list "${propertyTitle}" has been approved. You can now log in to your dashboard to post it live.`,
+                date_label: "Property Listing",
+                time_label: "Status Update",
+                details_header: "Listing Details",
+                view_link: "https://ndfxcuboxpxbbsrdvywv.supabase.co",
+                logo_url: "https://raw.githubusercontent.com/RashmiShetty07/EliteNest/main/src/assets/logo.png" // Placeholder or direct URL if available
+              };
+
+            console.log(`Attempting to send property ${newStatus} email to: "${userEmail}" via EmailJS...`);
+            
+            if (SERVICE_ID && SERVICE_ID !== "service_xxxxxxx") {
+              await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+              console.log("EmailJS Property Notification sent.");
+              alert(`✅ ${newStatus === "rejected" ? "Rejection" : "Approval"} email sent to ${userEmail}`);
+            }
+          } catch (emailErr) {
+            console.error("Error sending property email via EmailJS:", emailErr);
+            alert("❌ Failed to send email: " + (emailErr.text || emailErr.message));
+          }
         }
       }
 
@@ -1096,71 +1136,47 @@ function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError 
                 }
              }
 
+             // Handle notification if userId was found
              if (userId) {
-                const propertyTitle = aptData.properties?.title || aptData.property_title || "Property";
-                const dateStr = aptData.appointment_date ? ` on ${aptData.appointment_date}` : "";
-                
-                const isAccepted = newStatus === "confirmed" || newStatus === "accepted";
-                const notifType = isAccepted ? "appointment_confirmed" : "appointment_rejected";
-                const notifTitle = isAccepted ? "Appointment Accepted!" : "Appointment Update";
-                const notifMessage = isAccepted 
-                    ? `Your appointment for "${propertyTitle}"${dateStr} has been accepted by the admin.`
-                    : `Your appointment for "${propertyTitle}"${dateStr} has been rejected. Reason: ${rejectionReason}`;
-
-                const { error: notifError } = await supabase.from("notifications").insert({
-                    user_id: userId,
-                    type: notifType,
-                    title: notifTitle,
-                    message: notifMessage,
-                    read: false,
-                    created_at: new Date().toISOString()
-                });
-                
-                if (notifError) console.warn("Error creating appointment notification:", notifError);
-                else console.log(`Appointment notification (${newStatus}) sent to user:`, userId);
-
-                // Send email notification via EmailJS (Much easier and works for everyone)
-                if (["confirmed", "accepted", "rejected"].includes(newStatus) && (aptData.user_email || aptData.email)) {
-                  try {
-                    const userEmail = aptData.user_email || aptData.email;
-                    const userName = aptData.user_name || "Valued Customer";
-                    const propertyTitle = aptData.properties?.title || aptData.property_title || "Property";
-                    
-                    // EmailJS Parameters
-                    const templateParams = {
-                      to_name: userName,
-                      to_email: userEmail,
-                      property_title: propertyTitle,
-                      status: newStatus === "rejected" ? "Rejected" : "Accepted",
-                      message: newStatus === "rejected" 
-                        ? `Unfortunately, your appointment has been rejected. Reason: ${rejectionReason}` 
-                        : `Great news! Your appointment has been accepted. We look forward to seeing you.`,
-                      appointment_date: aptData.appointment_date,
-                      appointment_time: aptData.appointment_time,
-                    };
-
-                    console.log(`Attempting to send ${newStatus} email to: "${userEmail}" via EmailJS...`);
-                    
-                    // NOTE: You need to replace these with your own EmailJS keys
-                    // Service ID, Template ID, and Public Key from https://dashboard.emailjs.com/
-                    const SERVICE_ID = "service_xxxxxxx"; // Replace with your Service ID
-                    const TEMPLATE_ID = "template_xxxxxxx"; // Replace with your Template ID
-                    const PUBLIC_KEY = "xxxxxxxxxxxxxxxxx"; // Replace with your Public Key
-
-                    if (SERVICE_ID === "service_xxxxxxx") {
-                      console.warn("EmailJS not configured yet. Please provide your keys in Admindashboard.jsx");
-                    } else {
-                      await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
-                      console.log("EmailJS send successful.");
-                      alert(`✅ ${newStatus === "rejected" ? "Rejection" : "Acceptance"} email sent to ${userEmail}`);
-                    }
-                  } catch (emailErr) {
-                    console.error("Error sending email via EmailJS:", emailErr);
-                    // Don't alert here to avoid annoying the admin if the DB update worked
-                  }
-                }
+                console.log("User ID found for notification:", userId);
              } else {
                 console.warn("Could not find user_id for appointment notification (no ID and email lookup failed)");
+             }
+
+             // --- SEPARATE EMAIL LOGIC (Independent of userId) ---
+             if (["confirmed", "accepted", "rejected"].includes(newStatus) && (aptData.user_email || aptData.email)) {
+               try {
+                 const userEmail = aptData.user_email || aptData.email;
+                 const userName = aptData.user_name || "Valued Customer";
+                 const propertyTitle = aptData.properties?.title || aptData.property_title || "Property";
+                 
+                 // EmailJS Parameters
+                 const templateParams = {
+                   to_name: userName,
+                   to_email: userEmail,
+                   property_title: propertyTitle,
+                   status: newStatus === "rejected" ? "Booking Request Declined" : "Booking Confirmed",
+                   message: newStatus === "rejected" 
+                     ? `We have reviewed your appointment request for "${propertyTitle}" and unfortunately, we are unable to proceed at this time. \n\nReason: ${rejectionReason}` 
+                     : `Your appointment request for "${propertyTitle}" has been confirmed. We look forward to seeing you on ${aptData.appointment_date} at ${aptData.appointment_time}.`,
+                   date_label: aptData.appointment_date,
+                   time_label: aptData.appointment_time,
+                   details_header: "Booking Details",
+                   view_link: "https://ndfxcuboxpxbbsrdvywv.supabase.co",
+                   logo_url: "https://raw.githubusercontent.com/RashmiShetty07/EliteNest/main/src/assets/logo.png"
+                 };
+
+                 console.log(`Attempting to send ${newStatus} email to: "${userEmail}" via EmailJS...`);
+                 
+                 if (SERVICE_ID && SERVICE_ID !== "service_xxxxxxx") {
+                   await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+                   console.log("EmailJS send successful.");
+                   alert(`✅ ${newStatus === "rejected" ? "Rejection" : "Acceptance"} email sent to ${userEmail}`);
+                 }
+               } catch (emailErr) {
+                 console.error("Error sending email via EmailJS:", emailErr);
+                 alert("❌ Failed to send email: " + (emailErr.text || emailErr.message));
+               }
              }
           }
         } catch (notifErr) {
