@@ -13,17 +13,21 @@
 
 /* HERO SECTION */
 .contact-hero {
-  height: 100vh;
+  height: 85vh;
+  min-height: 480px;
   width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
   background: linear-gradient(135deg, rgba(15,23,42,0.5), rgba(30,41,59,0.5)),
-              url("https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1600&q=80") center/cover no-repeat;
+              url("https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1600&q=80")
+              center/cover no-repeat;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   text-align: center;
   color: white;
-  margin-top: 80px;
+  padding: 80px 20px 60px;
 }
 
 .contact-hero h1 {
@@ -48,9 +52,11 @@
 
 /* CONTACT INFO SECTION - FULL SCREEN */
 .contact-section {
-  min-height: 100vh;
+  min-height: auto;
   width: 100vw;
-  padding: 80px 30px;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  padding: 60px 30px 80px;
   background: linear-gradient(135deg, #2149a5, #6187c3);
   display: flex;
   flex-direction: column;

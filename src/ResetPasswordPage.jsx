@@ -65,7 +65,14 @@ export default function ResetPassword() {
       {/* 🔹 NEW DASHBOARD HEADER */}
       <header className="top-header" style={{ position: 'absolute', width: '100%', background: '#000000', zIndex: 10 }}>
         <div className="header-left">
-          <Link to="/" className="header-brand">Elite Nest</Link>
+          <Link to="/" className="header-brand">
+            <img
+              src="/elite-nest-logo.png"
+              alt="Elite Nest"
+              style={{ height: "56px", objectFit: "contain" }}
+            />
+            <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+          </Link>
           <nav className="header-links">
             <Link to="/" className="header-link">Home</Link>
             <Link to="/properties" className="header-link">Properties</Link>

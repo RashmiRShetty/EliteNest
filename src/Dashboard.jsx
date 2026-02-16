@@ -163,10 +163,8 @@ export default function Dashboard() {
   };
 
   const closeSidebarOnWeb = () => {
-    if (window.innerWidth > 768) {
-      setSidebarCollapsed(true);
-      localStorage.setItem('elitenest:sidebarCollapsed', '1');
-    }
+    setSidebarCollapsed(true);
+    localStorage.setItem('elitenest:sidebarCollapsed', '1');
   };
 
   const toggleSidebar = () => {
@@ -205,7 +203,7 @@ export default function Dashboard() {
       {/* Sidebar */}
       <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <Link to="/" className="sidebar-logo">Menu</Link>
           <button onClick={toggleSidebar} className="sidebar-toggle-btn">
             <Icons.Menu />
           </button>
@@ -261,7 +259,14 @@ export default function Dashboard() {
           <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
             <Icons.Menu />
           </button>
-          <Link to="/" className="header-brand">Elite Nest</Link>
+          <Link to="/" className="header-brand">
+            <img
+              src="/elite-nest-logo.png"
+              alt="Elite Nest"
+              style={{ height: "56px", objectFit: "contain" }}
+            />
+            <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+          </Link>
           <nav className="header-links">
             <Link to="/dashboard" className="header-link">Home</Link>
             <Link to="/properties" className="header-link">Properties</Link>
@@ -270,37 +275,46 @@ export default function Dashboard() {
           </nav>
         </div>       
         <div className="header-actions">
-            <div style={{ position: 'relative' }}>
-              <button 
-                className="icon-btn" 
-                onClick={() => navigate('/notifications')}
-                aria-label="Notifications"
-              >
-                <Icons.Bell />
-              </button>
-              {unreadCount > 0 && (
-                <span style={{
-                  position: "absolute",
-                  top: "0px",
-                  right: "0px",
-                  width: "8px",
-                  height: "8px",
-                  backgroundColor: "var(--danger-color)",
-                  borderRadius: "50%"
-                }}></span>
-              )}
+          <div style={{ position: 'relative', marginRight: '12px' }}>
+            <button 
+              className="icon-btn" 
+              onClick={() => navigate('/notifications')}
+              aria-label="Notifications"
+            >
+              <Icons.Bell />
+            </button>
+            {unreadCount > 0 && (
+              <span style={{
+                position: "absolute",
+                top: "0px",
+                right: "0px",
+                width: "8px",
+                height: "8px",
+                backgroundColor: "var(--danger-color)",
+                borderRadius: "50%"
+              }}></span>
+            )}
+          </div>
+
+          <button
+            className="icon-btn"
+            onClick={handleSignOut}
+            aria-label="Logout"
+            style={{ marginRight: '12px' }}
+          >
+            <Icons.LogOut />
+          </button>
+          
+          <div className="user-profile" style={{ cursor: 'pointer' }} onClick={() => navigate('/profile')}>
+            <div className="user-avatar">
+              {greeting.charAt(0).toUpperCase()}
             </div>
-            
-            <div className="user-profile">
-              <div className="user-avatar">
-                {greeting.charAt(0).toUpperCase()}
-              </div>
-              <div className="user-info">
-                <span className="user-name">{greeting}</span>
-                <span className="user-role">User</span>
-              </div>
+            <div className="user-info">
+              <span className="user-name">{greeting}</span>
+              <span className="user-role">User</span>
             </div>
           </div>
+        </div>
         </header>
 
         {/* Dashboard Content */}

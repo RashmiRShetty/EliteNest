@@ -118,10 +118,8 @@ export default function ProfilePage() {
   }, [navigate]);
 
   const closeSidebarOnWeb = () => {
-    if (window.innerWidth > 768) {
-      setSidebarCollapsed(true);
-      localStorage.setItem('elitenest:sidebarCollapsed', '1');
-    }
+    setSidebarCollapsed(true);
+    localStorage.setItem('elitenest:sidebarCollapsed', '1');
   };
 
   const toggleSidebar = () => {
@@ -189,7 +187,12 @@ export default function ProfilePage() {
     }
   };
 
-  const greeting = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
+  const greeting =
+    user?.user_metadata?.full_name ||
+    user?.email?.split("@")[0] ||
+    "User";
+  const displayName = profileData.fullName || greeting;
+  const displayInitial = (displayName || "U").charAt(0).toUpperCase();
 
   if (loading) {
     return (
@@ -205,7 +208,7 @@ export default function ProfilePage() {
       {/* Sidebar */}
       <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <Link to="/" className="sidebar-logo">Menu</Link>
           <button onClick={toggleSidebar} className="sidebar-toggle-btn">
             <Icons.Menu />
           </button>
@@ -261,7 +264,14 @@ export default function ProfilePage() {
             <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
               <Icons.Menu />
             </button>
-            <Link to="/" className="header-brand">Elite Nest</Link>
+            <Link to="/" className="header-brand">
+              <img
+                src="/elite-nest-logo.png"
+                alt="Elite Nest"
+                style={{ height: "72px", maxHeight: "72px", objectFit: "contain" }}
+              />
+              <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+            </Link>
             <nav className="header-links">
               <Link to="/dashboard" className="header-link">Home</Link>
               <Link to="/properties" className="header-link">Properties</Link>
@@ -270,7 +280,7 @@ export default function ProfilePage() {
             </nav>
           </div>       
           <div className="header-actions">
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', marginRight: '12px' }}>
               <button 
                 className="icon-btn" 
                 onClick={() => navigate('/notifications')}
@@ -290,8 +300,20 @@ export default function ProfilePage() {
                 }}></span>
               )}
             </div>
+            <button
+              className="icon-btn"
+              onClick={handleSignOut}
+              aria-label="Logout"
+              style={{ marginRight: '12px' }}
+            >
+              <Icons.LogOut />
+            </button>
             
-            <div className="user-profile">
+            <div
+              className="user-profile"
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate('/profile')}
+            >
               <div className="user-avatar">
                 {greeting.charAt(0).toUpperCase()}
               </div>
@@ -343,133 +365,259 @@ export default function ProfilePage() {
             )}
           </div>
 
-          <div style={{ 
-            maxWidth: "100%", 
-            background: 'var(--surface-color)',
-            padding: '30px',
-            borderRadius: '16px',
-            border: '1px solid var(--border-color)',
-            marginTop: '20px'
-          }}>
-            <div style={{ display: "grid", gap: "24px", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
-              <div className="profile-field">
-                <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "var(--text-primary)" }}>
-                  Full Name
-                </label>
-                {editMode ? (
-                  <input
-                    type="text"
-                    name="fullName"
-                    value={profileData.fullName}
-                    onChange={handleInputChange}
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      background: 'var(--black-bg)',
-                      border: "1px solid var(--border-color)",
-                      borderRadius: "8px",
-                      color: "var(--text-primary)",
-                      fontSize: "1rem"
-                    }}
-                  />
-                ) : (
-                  <div style={{ 
-                    padding: "12px", 
-                    backgroundColor: "var(--black-bg)", 
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "8px",
-                    color: "var(--text-primary)"
-                  }}>
-                    {profileData.fullName || "Not set"}
+          <div
+            style={{
+              maxWidth: "100%",
+              background:
+                "linear-gradient(135deg, #020617, #050505)",
+              padding: "28px 28px 24px",
+              borderRadius: "20px",
+              border: "1px solid var(--border-color)",
+              marginTop: "20px",
+              boxShadow: "var(--shadow-md)"
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(260px, 320px) minmax(0, 1fr)",
+                gap: "24px",
+                alignItems: "flex-start"
+              }}
+            >
+              <div
+                style={{
+                  borderRight: "1px solid rgba(31,41,55,0.9)",
+                  paddingRight: "20px",
+                  marginRight: "8px"
+                }}
+              >
+                <div
+                  style={{
+                    height: "110px",
+                    borderRadius: "16px",
+                    background:
+                      "linear-gradient(135deg, #7c2d12, #b45309, #92400e)",
+                    marginBottom: "28px"
+                  }}
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "space-between",
+                    marginTop: "-60px",
+                    padding: "0 8px"
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "20px",
+                        fontWeight: 700,
+                        color: "#f9fafb"
+                      }}
+                    >
+                      {displayName}
+                    </div>
                   </div>
-                )}
-              </div>
-
-              <div className="profile-field">
-                <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "var(--text-primary)" }}>
-                  Email Address
-                </label>
-                <div style={{ 
-                  padding: "12px", 
-                  backgroundColor: "rgba(255,255,255,0.05)", 
-                  border: "1px solid var(--border-color)",
-                  borderRadius: "8px",
-                  color: "var(--text-secondary)",
-                  cursor: 'not-allowed'
-                }}>
-                  {profileData.email}
+                  <div
+                    style={{
+                      width: "70px",
+                      height: "70px",
+                      borderRadius: "999px",
+                      background:
+                        "linear-gradient(135deg, var(--secondary-color), #8b5cf6)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "28px",
+                      fontWeight: 700,
+                      color: "#fff",
+                      boxShadow: "0 12px 30px rgba(0,0,0,0.7)"
+                    }}
+                  >
+                    {displayInitial}
+                  </div>
                 </div>
-                <small style={{ color: "var(--text-secondary)", marginTop: '4px', display: 'block' }}>Email cannot be changed</small>
               </div>
 
-              <div className="profile-field">
-                <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "var(--text-primary)" }}>
-                  Phone Number
-                </label>
-                {editMode ? (
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={profileData.phone}
-                    onChange={handleInputChange}
-                    placeholder="Enter phone number"
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      background: 'var(--black-bg)',
-                      border: "1px solid var(--border-color)",
-                      borderRadius: "8px",
-                      color: "var(--text-primary)",
-                      fontSize: "1rem"
-                    }}
-                  />
-                ) : (
-                  <div style={{ 
-                    padding: "12px", 
-                    backgroundColor: "var(--black-bg)", 
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "8px",
-                    color: "var(--text-primary)"
-                  }}>
-                    {profileData.phone || "Not set"}
+              <div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "20px",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(260px, 1fr))"
+                  }}
+                >
+                  <div className="profile-field">
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "8px",
+                        fontWeight: "500",
+                        color: "var(--text-primary)"
+                      }}
+                    >
+                      Full Name
+                    </label>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        name="fullName"
+                        value={profileData.fullName}
+                        onChange={handleInputChange}
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          background: "var(--black-bg)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "8px",
+                          color: "var(--text-primary)",
+                          fontSize: "1rem"
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          padding: "12px",
+                          backgroundColor: "var(--black-bg)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "8px",
+                          color: "var(--text-primary)"
+                        }}
+                      >
+                        {profileData.fullName || "Not set"}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div className="profile-field" style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "var(--text-primary)" }}>
-                  Primary Address
-                </label>
-                {editMode ? (
-                  <textarea
-                    name="address"
-                    value={profileData.address}
-                    onChange={handleInputChange}
-                    placeholder="Enter your address"
-                    rows="3"
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      background: 'var(--black-bg)',
-                      border: "1px solid var(--border-color)",
-                      borderRadius: "8px",
-                      color: "var(--text-primary)",
-                      fontSize: "1rem",
-                      resize: "vertical"
-                    }}
-                  />
-                ) : (
-                  <div style={{ 
-                    padding: "12px", 
-                    backgroundColor: "var(--black-bg)", 
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "8px",
-                    color: "var(--text-primary)",
-                    minHeight: '80px'
-                  }}>
-                    {profileData.address || "Not set"}
+                  <div className="profile-field">
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "8px",
+                        fontWeight: "500",
+                        color: "var(--text-primary)"
+                      }}
+                    >
+                      Email Address
+                    </label>
+                    <div
+                      style={{
+                        padding: "12px",
+                        backgroundColor: "rgba(255,255,255,0.05)",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "8px",
+                        color: "var(--text-secondary)",
+                        cursor: "not-allowed"
+                      }}
+                    >
+                      {profileData.email}
+                    </div>
+                    <small
+                      style={{
+                        color: "var(--text-secondary)",
+                        marginTop: "4px",
+                        display: "block"
+                      }}
+                    >
+                      Email cannot be changed
+                    </small>
                   </div>
-                )}
+
+                  <div className="profile-field">
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "8px",
+                        fontWeight: "500",
+                        color: "var(--text-primary)"
+                      }}
+                    >
+                      Phone Number
+                    </label>
+                    {editMode ? (
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={profileData.phone}
+                        onChange={handleInputChange}
+                        placeholder="Enter phone number"
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          background: "var(--black-bg)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "8px",
+                          color: "var(--text-primary)",
+                          fontSize: "1rem"
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          padding: "12px",
+                          backgroundColor: "var(--black-bg)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "8px",
+                          color: "var(--text-primary)"
+                        }}
+                      >
+                        {profileData.phone || "Not set"}
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    className="profile-field"
+                    style={{ gridColumn: "1 / -1" }}
+                  >
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "8px",
+                        fontWeight: "500",
+                        color: "var(--text-primary)"
+                      }}
+                    >
+                      Primary Address
+                    </label>
+                    {editMode ? (
+                      <textarea
+                        name="address"
+                        value={profileData.address}
+                        onChange={handleInputChange}
+                        placeholder="Enter your address"
+                        rows="3"
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          background: "var(--black-bg)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "8px",
+                          color: "var(--text-primary)",
+                          fontSize: "1rem",
+                          resize: "vertical"
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          padding: "12px",
+                          backgroundColor: "var(--black-bg)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "8px",
+                          color: "var(--text-primary)",
+                          minHeight: "80px"
+                        }}
+                      >
+                        {profileData.address || "Not set"}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -479,5 +627,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-

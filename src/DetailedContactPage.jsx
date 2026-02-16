@@ -14,6 +14,7 @@ const Icons = {
   Message: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>,
   User: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
   Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+  Bell: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>,
   LogOut: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>,
   Menu: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
 };
@@ -23,9 +24,11 @@ const DetailedContactPage = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const saved = localStorage.getItem('elitenest:sidebarCollapsed');
-      return saved === '0' ? false : true;
+      if (saved === '0') return false;
+      if (saved === '1') return true;
+      return false;
     } catch {
-      return true;
+      return false;
     }
   });
   const [user, setUser] = useState(null);
@@ -35,10 +38,8 @@ const DetailedContactPage = () => {
   }, []);
 
   const closeSidebarOnWeb = () => {
-    if (window.innerWidth > 768) {
-      setSidebarCollapsed(true);
-      localStorage.setItem('elitenest:sidebarCollapsed', '1');
-    }
+    setSidebarCollapsed(true);
+    localStorage.setItem('elitenest:sidebarCollapsed', '1');
   };
 
   const toggleSidebar = () => {
@@ -54,11 +55,99 @@ const DetailedContactPage = () => {
     navigate("/", { replace: true });
   };
 
+  const greeting = user ? (user.user_metadata?.full_name || user.email?.split("@")[0] || "User") : "User";
+
+  if (!user) {
+    return (
+      <div className="dashboard-container dark-theme">
+        <main className="main-content" style={{ marginLeft: 0 }}>
+          <header className="top-header">
+            <div className="header-left">
+              <Link to="/" className="header-brand">
+                <img
+                  src="/elite-nest-logo.png"
+                  alt="Elite Nest"
+                  style={{ height: "56px", objectFit: "contain" }}
+                />
+                <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+              </Link>
+              <nav className="header-links">
+                <Link to="/" className="header-link">Home</Link>
+                <Link to="/properties" className="header-link">Properties</Link>
+                <Link to="/contact" className="header-link">Contact</Link>
+                <Link to="/about" className="header-link">About Us</Link>
+              </nav>
+            </div>
+            <div className="header-actions">
+              <Link to="/loginpage" style={{ textDecoration: 'none' }}>
+                <button className="promo-btn" style={{ padding: '8px 20px', fontSize: '14px' }}>
+                  Sign In
+                </button>
+              </Link>
+            </div>
+          </header>
+
+          <div className="dashboard-page-content">
+            <div className="contact-page" style={{ padding: 0 }}>
+              <section className="contact-hero">
+                <h1>Contact Elite Nest</h1>
+                <p>We're here to assist you — reach out anytime</p>
+              </section>
+
+              <section className="contact-section">
+                <h2>Get in Touch</h2>
+                <div className="contact-container">
+                  <div className="contact-info-box">
+                    <h3>📍 Address</h3>
+                    <p>
+                      Poornaprajna Institute of Management<br />
+                      Udupi, Karnataka<br />
+                      India
+                    </p>
+                  </div>
+
+                  <div className="contact-info-box">
+                    <h3>📞 Phone</h3>
+                    <p>
+                      +91 89704 31369<br />
+                      +91 80505 62765<br />
+                      Mon - Fri: 9AM - 6PM
+                    </p>
+                  </div>
+
+                  <div className="contact-info-box">
+                    <h3>📧 Email</h3>
+                    <p>
+                      elitenest07@gmail.com<br />
+                      rashmi.mca.2024@pim.ac.in<br />
+                      rachana.mca.2024@pim.ac.in
+                    </p>
+                  </div>
+
+                  <div className="contact-info-box">
+                    <h3>⏰ Hours</h3>
+                    <p>
+                      Mon - Fri: 9AM - 6PM<br />
+                      Sat: 9AM - 1PM<br />
+                      Sunday: Closed
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <Footer />
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-container dark-theme">
       <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <Link to="/" className="sidebar-logo">Menu</Link>
           <button onClick={toggleSidebar} className="sidebar-toggle-btn">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
@@ -111,7 +200,14 @@ const DetailedContactPage = () => {
             <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
               <Icons.Menu />
             </button>
-            <Link to="/" className="header-brand">Elite Nest</Link>
+            <Link to="/" className="header-brand">
+              <img
+                src="/elite-nest-logo.png"
+                alt="Elite Nest"
+                style={{ height: "56px", objectFit: "contain" }}
+              />
+              <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+            </Link>
             <nav className="header-links">
               <Link to="/" className="header-link">Home</Link>
               <Link to="/properties" className="header-link">Properties</Link>
@@ -119,7 +215,32 @@ const DetailedContactPage = () => {
               <Link to="/about" className="header-link">About Us</Link>
             </nav>
           </div>
-          <div className="header-actions"></div>
+          <div className="header-actions">
+            <button
+              className="icon-btn"
+              onClick={() => navigate('/notifications')}
+              aria-label="Notifications"
+              style={{ marginRight: '12px' }}
+            >
+              <Icons.Bell />
+            </button>
+            <div
+              className="user-profile"
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate('/profile')}
+            >
+              <div className="user-avatar">
+                {greeting.charAt(0).toUpperCase()}
+              </div>
+              <div className="user-info">
+                <span className="user-name">{greeting}</span>
+                <span className="user-role">User</span>
+              </div>
+            </div>
+            <button onClick={handleSignOut} className="icon-btn" title="Sign Out">
+              <Icons.LogOut />
+            </button>
+          </div>
         </header>
 
         <div className="dashboard-page-content">
@@ -135,17 +256,17 @@ const DetailedContactPage = () => {
                 <div className="contact-info-box">
                   <h3>📍 Address</h3>
                   <p>
-                    Elite Nest Headquarters<br />
-                    123 Property Street<br />
-                    Mumbai, India - 400001
+                    Poornaprajna Institute of Management<br />
+                    Udupi, Karnataka<br />
+                    India
                   </p>
                 </div>
 
                 <div className="contact-info-box">
                   <h3>📞 Phone</h3>
                   <p>
-                    +91-1234567890<br />
-                    +91-9876543210<br />
+                    +91 8970431369<br />
+                    +91 80505 62765<br />
                     Mon - Fri: 9AM - 6PM
                   </p>
                 </div>
@@ -153,9 +274,9 @@ const DetailedContactPage = () => {
                 <div className="contact-info-box">
                   <h3>📧 Email</h3>
                   <p>
-                    support@elitenest.com<br />
-                    info@elitenest.com<br />
-                    sales@elitenest.com
+                    elitenes07@gmail.com<br />
+                    rashmi.mca.2024@pim.ac.in<br />
+                    rachana.mca.2024@pim.ac.in
                   </p>
                 </div>
 

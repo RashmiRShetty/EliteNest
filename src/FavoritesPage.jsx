@@ -217,21 +217,34 @@ export default function FavoritesPage() {
         }
         setAppointments(aptData);
 
-        // Fetch Saved Properties
+        // Fetch Saved Properties (Wishlist)
         try {
-          const { data: wishlistData, error: wishlistError } = await supabase
+          const { data: wishlistRows, error: wishlistError } = await supabase
             .from('wishlist')
-            .select(`
-              property_id,
-              properties (*)
-            `)
+            .select('property_id')
             .eq('user_id', currentUser.id);
 
-          if (!wishlistError && wishlistData) {
-            setSavedProperties(wishlistData.map(item => item.properties).filter(Boolean));
+          if (!wishlistError && wishlistRows && wishlistRows.length > 0) {
+            const propertyIds = [...new Set(wishlistRows.map(row => row.property_id).filter(Boolean))];
+
+            if (propertyIds.length > 0) {
+              const { data: propsData, error: propsError } = await supabase
+                .from('properties')
+                .select('*')
+                .in('id', propertyIds);
+
+              if (!propsError && propsData) {
+                setSavedProperties(propsData);
+              }
+            } else {
+              setSavedProperties([]);
+            }
+          } else {
+            setSavedProperties([]);
           }
         } catch (e) {
           console.error("Error fetching wishlist:", e);
+          setSavedProperties([]);
         }
 
       } catch (error) {
@@ -345,10 +358,8 @@ export default function FavoritesPage() {
   };
 
   const closeSidebarOnWeb = () => {
-    if (window.innerWidth > 768) {
-      setSidebarCollapsed(true);
-      localStorage.setItem('elitenest:sidebarCollapsed', '1');
-    }
+    setSidebarCollapsed(true);
+    localStorage.setItem('elitenest:sidebarCollapsed', '1');
   };
 
   const toggleSidebar = () => {
@@ -447,7 +458,7 @@ export default function FavoritesPage() {
       {/* Sidebar */}
       <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <Link to="/" className="sidebar-logo">Menu</Link>
           <button onClick={toggleSidebar} className="sidebar-toggle-btn">
             <Icons.Menu />
           </button>
@@ -503,7 +514,14 @@ export default function FavoritesPage() {
             <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
               <Icons.Menu />
             </button>
-            <Link to="/" className="header-brand">Elite Nest</Link>
+            <Link to="/" className="header-brand">
+              <img
+                src="/elite-nest-logo.png"
+                alt="Elite Nest"
+                style={{ height: "56px", objectFit: "contain" }}
+              />
+              <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+            </Link>
             <nav className="header-links">
               <Link to="/dashboard" className="header-link">Home</Link>
               <Link to="/properties" className="header-link">Properties</Link>
@@ -512,7 +530,7 @@ export default function FavoritesPage() {
             </nav>
           </div>
           <div className="header-actions">
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', marginRight: '12px' }}>
               <button 
                 className="icon-btn"
                 onClick={() => navigate('/notifications')}
@@ -532,11 +550,26 @@ export default function FavoritesPage() {
                 }}></span>
               )}
             </div>
-            
-            <div className="user-profile">
-               <div className="avatar-placeholder">
-                  {user?.email?.[0]?.toUpperCase() || 'U'}
-               </div>
+            <button
+              className="icon-btn"
+              onClick={handleSignOut}
+              aria-label="Logout"
+              style={{ marginRight: '12px' }}
+            >
+              <Icons.LogOut />
+            </button>
+            <div
+              className="user-profile"
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate('/profile')}
+            >
+              <div className="user-avatar">
+                {greeting.charAt(0).toUpperCase()}
+              </div>
+              <div className="user-info">
+                <span className="user-name">{greeting}</span>
+                <span className="user-role">User</span>
+              </div>
             </div>
           </div>
         </header>

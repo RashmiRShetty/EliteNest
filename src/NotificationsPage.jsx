@@ -35,6 +35,7 @@ export default function NotificationsPage() {
     }
   });
   const [unreadCount, setUnreadCount] = useState(0);
+  const [typeFilter, setTypeFilter] = useState("all");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -114,10 +115,8 @@ export default function NotificationsPage() {
   }, [navigate]);
 
   const closeSidebarOnWeb = () => {
-    if (window.innerWidth > 768) {
-      setSidebarCollapsed(true);
-      localStorage.setItem('elitenest:sidebarCollapsed', '1');
-    }
+    setSidebarCollapsed(true);
+    localStorage.setItem('elitenest:sidebarCollapsed', '1');
   };
 
   const toggleSidebar = () => {
@@ -173,6 +172,54 @@ export default function NotificationsPage() {
     }
   };
 
+  const getNotificationCategory = (notification) => {
+    const type = (notification.type || "").toLowerCase();
+    const title = (notification.title || "").toLowerCase();
+    const message = (notification.message || "").toLowerCase();
+
+    if (
+      type === "property_approved" ||
+      type === "property_accepted" ||
+      (title.includes("property") && (title.includes("approved") || title.includes("accepted"))) ||
+      (message.includes("your property") && (message.includes("approved") || message.includes("accepted")))
+    ) {
+      return "property_approved";
+    }
+
+    if (
+      type === "property_rejected" ||
+      (title.includes("property") && title.includes("rejected")) ||
+      (message.includes("your property") && message.includes("rejected"))
+    ) {
+      return "property_rejected";
+    }
+
+    if (
+      type === "appointment_accepted" ||
+      type === "booking_accepted" ||
+      type === "booking_confirmed" ||
+      (title.includes("appointment") && (title.includes("accepted") || title.includes("confirmed"))) ||
+      (message.includes("appointment") && (message.includes("accepted") || message.includes("confirmed"))) ||
+      message.includes("booking confirmed") ||
+      message.includes("booking accepted")
+    ) {
+      return "appointment_accepted";
+    }
+
+    if (
+      type === "appointment_rejected" ||
+      type === "booking_rejected" ||
+      (title.includes("appointment") && title.includes("rejected")) ||
+      (message.includes("appointment") && message.includes("rejected")) ||
+      message.includes("booking request declined") ||
+      message.includes("booking declined")
+    ) {
+      return "appointment_rejected";
+    }
+
+    return "other";
+  };
+
   const handleNotificationClick = async (notification) => {
     if (!notification.read) {
       markAsRead(notification.id);
@@ -182,6 +229,7 @@ export default function NotificationsPage() {
     if (notification.property_id) {
       // If the notification is about a property being accepted/approved
       if (
+        notification.type === 'property_approved' ||
         notification.type === 'property_accepted' || 
         notification.title?.includes('Accepted') || 
         notification.title?.includes('Approved')
@@ -198,6 +246,7 @@ export default function NotificationsPage() {
       if (match && match[1]) {
         const propertyTitle = match[1];
         if (
+          notification.type === 'property_approved' ||
           notification.type === 'property_accepted' || 
           notification.title?.includes('Accepted') || 
           notification.title?.includes('Approved')
@@ -215,6 +264,13 @@ export default function NotificationsPage() {
 
   const greeting = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
 
+  const hasAnyNotifications = notifications.length > 0;
+
+  const filteredNotifications = notifications.filter((n) => {
+    if (typeFilter === "all") return true;
+    return getNotificationCategory(n) === typeFilter;
+  });
+
   if (loading) {
     return (
       <div className="loading-container">
@@ -229,7 +285,7 @@ export default function NotificationsPage() {
       {/* Sidebar */}
       <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <Link to="/" className="sidebar-logo">Menu</Link>
           <button onClick={toggleSidebar} className="sidebar-toggle-btn">
             <Icons.Menu />
           </button>
@@ -285,7 +341,14 @@ export default function NotificationsPage() {
             <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
               <Icons.Menu />
             </button>
-            <Link to="/" className="header-brand">Elite Nest</Link>
+            <Link to="/" className="header-brand">
+              <img
+                src="/elite-nest-logo.png"
+                alt="Elite Nest"
+                style={{ height: "56px", objectFit: "contain" }}
+              />
+              <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+            </Link>
             <nav className="header-links">
               <Link to="/dashboard" className="header-link">Home</Link>
               <Link to="/properties" className="header-link">Properties</Link>
@@ -294,7 +357,7 @@ export default function NotificationsPage() {
             </nav>
           </div>       
           <div className="header-actions">
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', marginRight: '12px' }}>
               <button 
                 className="icon-btn" 
                 aria-label="Notifications"
@@ -314,8 +377,20 @@ export default function NotificationsPage() {
                 }}></span>
               )}
             </div>
+            <button
+              className="icon-btn"
+              onClick={handleSignOut}
+              aria-label="Logout"
+              style={{ marginRight: '12px' }}
+            >
+              <Icons.LogOut />
+            </button>
             
-            <div className="user-profile">
+            <div
+              className="user-profile"
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate('/profile')}
+            >
               <div className="user-avatar">
                 {greeting.charAt(0).toUpperCase()}
               </div>
@@ -331,24 +406,40 @@ export default function NotificationsPage() {
         <div className="dashboard-page-content">
           <div className="section-header">
             <h2 className="section-title">Notifications</h2>
-            {notifications.some(n => !n.read) && (
-              <button 
-                onClick={markAllAsRead}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--secondary-color)',
-                  cursor: 'pointer',
-                  fontWeight: '500'
-                }}
+            <button 
+              onClick={markAllAsRead}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--secondary-color)',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+            >
+              Mark all as read
+            </button>
+          </div>
+
+          <div style={{ marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {[
+              { key: "all", label: "All" },
+              { key: "appointment_accepted", label: "Appointment Accepted" },
+              { key: "appointment_rejected", label: "Appointment Rejected" },
+              { key: "property_approved", label: "Property Accepted" },
+              { key: "property_rejected", label: "Property Rejected" },
+            ].map((option) => (
+              <button
+                key={option.key}
+                className={`tab-btn ${typeFilter === option.key ? 'active' : ''}`}
+                onClick={() => setTypeFilter(option.key)}
               >
-                Mark all as read
+                {option.label}
               </button>
-            )}
+            ))}
           </div>
 
           <div className="notifications-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {notifications.length === 0 ? (
+            {!hasAnyNotifications ? (
               <div style={{ 
                 padding: '40px', 
                 textAlign: 'center', 
@@ -360,8 +451,20 @@ export default function NotificationsPage() {
                 <Icons.Bell />
                 <p style={{ marginTop: '12px' }}>No notifications yet</p>
               </div>
+            ) : filteredNotifications.length === 0 ? (
+              <div style={{ 
+                padding: '40px', 
+                textAlign: 'center', 
+                background: 'var(--surface-color)', 
+                borderRadius: '12px',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-secondary)'
+              }}>
+                <Icons.Bell />
+                <p style={{ marginTop: '12px' }}>No notifications for this filter</p>
+              </div>
             ) : (
-              notifications.map((notification) => (
+              filteredNotifications.map((notification) => (
                 <div 
                   key={notification.id} 
                   onClick={() => handleNotificationClick(notification)}

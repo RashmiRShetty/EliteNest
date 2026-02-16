@@ -536,6 +536,7 @@ export default function AdminDashboard() {
             fetchProperties={fetchProperties}
             setSelectedProperty={setSelectedProperty}
             setShowModal={setShowModal}
+            updateStatus={updateStatus}
           />
         )}
         {activeTab === "sellers" && <SellersTab sellers={sellers} fetchSellers={fetchSellers} updateStatus={updateStatus} setEditingProperty={setEditingProperty} setShowModal={setShowModal} />}
@@ -1181,7 +1182,7 @@ function UsersTab({ users, fetchUsers, loading }) {
   );
 }
 
-function PropertiesTab({ properties, fetchProperties, setSelectedProperty, setShowModal }) {
+function PropertiesTab({ properties, fetchProperties, setSelectedProperty, setShowModal, updateStatus }) {
   const [currentPage, setCurrentPage] = React.useState(0);
   const [selectedPropertyLocal, setSelectedPropertyLocal] = React.useState(null);
   const [showModalLocal, setShowModalLocal] = React.useState(false);
@@ -1206,103 +1207,12 @@ function PropertiesTab({ properties, fetchProperties, setSelectedProperty, setSh
 
   const handleStatusChange = async (propertyId, newStatus) => {
     try {
-      console.log("Updating status for property:", propertyId, "to:", newStatus);
-      
-      const { data: propertyData, error: fetchError } = await supabase
-        .from("properties")
-        .select("user_id, created_by, title, contact_email, contact_name")
-        .eq("id", propertyId)
-        .single();
-
-      if (fetchError) {
-        console.error("Error fetching property:", fetchError);
+      if (!updateStatus) {
+        console.warn("updateStatus function is not provided");
+        return;
       }
-
-      let property = propertyData;
-
-      const { data: updatedData, error } = await supabase
-        .from("properties")
-        .update({ status: newStatus })
-        .eq("id", propertyId)
-        .select();
-
-      if (error) {
-        console.error("Supabase update error:", error);
-        throw error;
-      }
-
-      if (!property && updatedData && updatedData.length > 0) {
-        property = updatedData[0];
-      }
-
-      console.log("Status updated successfully:", updatedData);
-
-      if (newStatus === "accepted" && property) {
-        let userId = property.user_id || property.created_by;
-        
-        if (!userId && property.contact_email) {
-          try {
-            const { data: userData } = await supabase
-              .from("profiles")
-              .select("id")
-              .eq("email", property.contact_email)
-              .single();
-            
-            if (userData) {
-              userId = userData.id;
-            } else {
-              const { data: authUsers } = await supabase.auth.admin.listUsers();
-              const foundUser = authUsers?.users?.find(u => u.email === property.contact_email);
-              if (foundUser) {
-                userId = foundUser.id;
-              }
-            }
-          } catch (err) {
-            console.warn("Could not find user by email:", err);
-          }
-        }
-        
-        if (userId) {
-          try {
-            const { error: notifError } = await supabase
-              .from("notifications")
-              .insert({
-                user_id: userId,
-                type: "property_approved",
-                title: "Property Approved!",
-                message: `Your property "${property.title || 'Property'}" has been approved. Click "Post Now" to upload documents and complete payment.`,
-                read: false,
-                created_at: new Date().toISOString()
-              });
-
-            if (notifError) {
-              console.warn("Could not create notification (table may not exist):", notifError);
-              try {
-                await supabase
-                  .from("messages")
-                  .insert({
-                    user_id: userId,
-                    subject: "Property Approved",
-                    message: `Your property "${property.title || 'Property'}" has been approved. You can now post it by clicking "Post Now" in My Listings.`,
-                    created_at: new Date().toISOString()
-                  });
-              } catch (msgErr) {
-                console.warn("Could not create message either:", msgErr);
-              }
-            } else {
-              console.log("Notification created for user:", userId);
-            }
-          } catch (notifErr) {
-            console.warn("Error creating notification:", notifErr);
-          }
-        } else {
-          console.warn("Could not find user_id for property notification");
-        }
-      }
-
-      await fetchProperties();
+      await updateStatus(propertyId, newStatus);
       setShowModalLocal(false);
-      alert(`Property status updated to ${newStatus} successfully!`);
     } catch (error) {
       console.error("Error updating status:", error);
       alert("Error updating status: " + (error.message || "Unknown error"));
@@ -1714,103 +1624,12 @@ function SellersTab({ sellers, fetchSellers, updateStatus, setEditingProperty, s
 
   const handleStatusChange = async (propertyId, newStatus) => {
     try {
-      console.log("Updating status for seller property:", propertyId, "to:", newStatus);
-      
-      const { data: propertyData, error: fetchError } = await supabase
-        .from("properties")
-        .select("user_id, created_by, title, contact_email, contact_name")
-        .eq("id", propertyId)
-        .single();
-
-      if (fetchError) {
-        console.error("Error fetching property:", fetchError);
+      if (!updateStatus) {
+        console.warn("updateStatus function is not provided");
+        return;
       }
-
-      let property = propertyData;
-
-      const { data: updatedData, error } = await supabase
-        .from("properties")
-        .update({ status: newStatus })
-        .eq("id", propertyId)
-        .select();
-
-      if (error) {
-        console.error("Supabase update error:", error);
-        throw error;
-      }
-
-      if (!property && updatedData && updatedData.length > 0) {
-        property = updatedData[0];
-      }
-
-      console.log("Status updated successfully:", updatedData);
-
-      if (newStatus === "accepted" && property) {
-        let userId = property.user_id || property.created_by;
-        
-        if (!userId && property.contact_email) {
-          try {
-            const { data: userData } = await supabase
-              .from("profiles")
-              .select("id")
-              .eq("email", property.contact_email)
-              .single();
-            
-            if (userData) {
-              userId = userData.id;
-            } else {
-              const { data: authUsers } = await supabase.auth.admin.listUsers();
-              const foundUser = authUsers?.users?.find(u => u.email === property.contact_email);
-              if (foundUser) {
-                userId = foundUser.id;
-              }
-            }
-          } catch (err) {
-            console.warn("Could not find user by email:", err);
-          }
-        }
-        
-        if (userId) {
-          try {
-            const { error: notifError } = await supabase
-              .from("notifications")
-              .insert({
-                user_id: userId,
-                type: "property_approved",
-                title: "Property Approved!",
-                message: `Your property "${property.title || 'Property'}" has been approved. Click "Post Now" to upload documents and complete payment.`,
-                read: false,
-                created_at: new Date().toISOString()
-              });
-
-            if (notifError) {
-              console.warn("Could not create notification (table may not exist):", notifError);
-              try {
-                await supabase
-                  .from("messages")
-                  .insert({
-                    user_id: userId,
-                    subject: "Property Approved",
-                    message: `Your property "${property.title || 'Property'}" has been approved. You can now post it by clicking "Post Now" in My Listings.`,
-                    created_at: new Date().toISOString()
-                  });
-              } catch (msgErr) {
-                console.warn("Could not create message either:", msgErr);
-              }
-            } else {
-              console.log("Notification created for user:", userId);
-            }
-          } catch (notifErr) {
-            console.warn("Error creating notification:", notifErr);
-          }
-        } else {
-          console.warn("Could not find user_id for property notification");
-        }
-      }
-
-      await fetchSellers();
+      await updateStatus(propertyId, newStatus);
       setShowModalLocal(false);
-      alert(`Seller property status updated to ${newStatus} successfully!`);
     } catch (error) {
       console.error("Error updating status:", error);
       alert("Error updating status: " + (error.message || "Unknown error"));
@@ -2538,103 +2357,12 @@ function LeasesTab({ leases, fetchLeases, updateStatus, setEditingProperty, setS
 
   const handleStatusChange = async (propertyId, newStatus) => {
     try {
-      console.log("Updating status for lease property:", propertyId, "to:", newStatus);
-      
-      const { data: propertyData, error: fetchError } = await supabase
-        .from("properties")
-        .select("user_id, created_by, title, contact_email, contact_name")
-        .eq("id", propertyId)
-        .single();
-
-      if (fetchError) {
-        console.error("Error fetching property:", fetchError);
+      if (!updateStatus) {
+        console.warn("updateStatus function is not provided");
+        return;
       }
-
-      let property = propertyData;
-
-      const { data: updatedData, error } = await supabase
-        .from("properties")
-        .update({ status: newStatus })
-        .eq("id", propertyId)
-        .select();
-
-      if (error) {
-        console.error("Supabase update error:", error);
-        throw error;
-      }
-
-      if (!property && updatedData && updatedData.length > 0) {
-        property = updatedData[0];
-      }
-
-      console.log("Status updated successfully:", updatedData);
-
-      if (newStatus === "accepted" && property) {
-        let userId = property.user_id || property.created_by;
-        
-        if (!userId && property.contact_email) {
-          try {
-            const { data: userData } = await supabase
-              .from("profiles")
-              .select("id")
-              .eq("email", property.contact_email)
-              .single();
-            
-            if (userData) {
-              userId = userData.id;
-            } else {
-              const { data: authUsers } = await supabase.auth.admin.listUsers();
-              const foundUser = authUsers?.users?.find(u => u.email === property.contact_email);
-              if (foundUser) {
-                userId = foundUser.id;
-              }
-            }
-          } catch (err) {
-            console.warn("Could not find user by email:", err);
-          }
-        }
-        
-        if (userId) {
-          try {
-            const { error: notifError } = await supabase
-              .from("notifications")
-              .insert({
-                user_id: userId,
-                type: "property_approved",
-                title: "Property Approved!",
-                message: `Your property "${property.title || 'Property'}" has been approved. Click "Post Now" to upload documents and complete payment.`,
-                read: false,
-                created_at: new Date().toISOString()
-              });
-
-            if (notifError) {
-              console.warn("Could not create notification (table may not exist):", notifError);
-              try {
-                await supabase
-                  .from("messages")
-                  .insert({
-                    user_id: userId,
-                    subject: "Property Approved",
-                    message: `Your property "${property.title || 'Property'}" has been approved. You can now post it by clicking "Post Now" in My Listings.`,
-                    created_at: new Date().toISOString()
-                  });
-              } catch (msgErr) {
-                console.warn("Could not create message either:", msgErr);
-              }
-            } else {
-              console.log("Notification created for user:", userId);
-            }
-          } catch (notifErr) {
-            console.warn("Error creating notification:", notifErr);
-          }
-        } else {
-          console.warn("Could not find user_id for property notification");
-        }
-      }
-
-      await fetchLeases();
+      await updateStatus(propertyId, newStatus);
       setShowModalLocal(false);
-      alert(`Lease property status updated to ${newStatus} successfully!`);
     } catch (error) {
       console.error("Error updating status:", error);
       alert("Error updating status: " + (error.message || "Unknown error"));
@@ -3354,103 +3082,12 @@ function RentalsTab({ rentals, fetchRentals, updateStatus, setEditingProperty, s
 
   const handleStatusChange = async (propertyId, newStatus) => {
     try {
-      console.log("Updating status for rental property:", propertyId, "to:", newStatus);
-      
-      const { data: propertyData, error: fetchError } = await supabase
-        .from("properties")
-        .select("user_id, created_by, title, contact_email, contact_name")
-        .eq("id", propertyId)
-        .single();
-
-      if (fetchError) {
-        console.error("Error fetching property:", fetchError);
+      if (!updateStatus) {
+        console.warn("updateStatus function is not provided");
+        return;
       }
-
-      let property = propertyData;
-
-      const { data: updatedData, error } = await supabase
-        .from("properties")
-        .update({ status: newStatus })
-        .eq("id", propertyId)
-        .select();
-
-      if (error) {
-        console.error("Supabase update error:", error);
-        throw error;
-      }
-
-      if (!property && updatedData && updatedData.length > 0) {
-        property = updatedData[0];
-      }
-
-      console.log("Status updated successfully:", updatedData);
-
-      if (newStatus === "accepted" && property) {
-        let userId = property.user_id || property.created_by;
-        
-        if (!userId && property.contact_email) {
-          try {
-            const { data: userData } = await supabase
-              .from("profiles")
-              .select("id")
-              .eq("email", property.contact_email)
-              .single();
-            
-            if (userData) {
-              userId = userData.id;
-            } else {
-              const { data: authUsers } = await supabase.auth.admin.listUsers();
-              const foundUser = authUsers?.users?.find(u => u.email === property.contact_email);
-              if (foundUser) {
-                userId = foundUser.id;
-              }
-            }
-          } catch (err) {
-            console.warn("Could not find user by email:", err);
-          }
-        }
-        
-        if (userId) {
-          try {
-            const { error: notifError } = await supabase
-              .from("notifications")
-              .insert({
-                user_id: userId,
-                type: "property_approved",
-                title: "Property Approved!",
-                message: `Your property "${property.title || 'Property'}" has been approved. Click "Post Now" to upload documents and complete payment.`,
-                read: false,
-                created_at: new Date().toISOString()
-              });
-
-            if (notifError) {
-              console.warn("Could not create notification (table may not exist):", notifError);
-              try {
-                await supabase
-                  .from("messages")
-                  .insert({
-                    user_id: userId,
-                    subject: "Property Approved",
-                    message: `Your property "${property.title || 'Property'}" has been approved. You can now post it by clicking "Post Now" in My Listings.`,
-                    created_at: new Date().toISOString()
-                  });
-              } catch (msgErr) {
-                console.warn("Could not create message either:", msgErr);
-              }
-            } else {
-              console.log("Notification created for user:", userId);
-            }
-          } catch (notifErr) {
-            console.warn("Error creating notification:", notifErr);
-          }
-        } else {
-          console.warn("Could not find user_id for property notification");
-        }
-      }
-
-      await fetchRentals();
+      await updateStatus(propertyId, newStatus);
       setShowModalLocal(false);
-      alert(`Rental property status updated to ${newStatus} successfully!`);
     } catch (error) {
       console.error("Error updating status:", error);
       alert("Error updating status: " + (error.message || "Unknown error"));

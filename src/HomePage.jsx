@@ -140,7 +140,14 @@ const HomePage = () => {
         {/* Top Header */}
         <header className="top-header">
           <div className="header-left">
-            <Link to="/" className="header-brand">Elite Nest</Link>
+            <Link to="/" className="header-brand">
+              <img
+                src="/elite-nest-logo.png"
+                alt="Elite Nest"
+                style={{ height: "56px", objectFit: "contain" }}
+              />
+              <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+            </Link>
             <nav className="header-links">
               <Link to="/" className="header-link">Home</Link>
               <Link to="/properties" className="header-link">Properties</Link>
@@ -172,7 +179,7 @@ const HomePage = () => {
                     }}></span>
                   )}
                 </div>
-                <div className="user-profile" style={{ cursor: 'pointer' }} onClick={() => navigate('/dashboard')}>
+                <div className="user-profile" style={{ cursor: 'pointer' }} onClick={() => navigate('/profile')}>
                   <div className="user-avatar">
                     {greeting.charAt(0).toUpperCase()}
                   </div>

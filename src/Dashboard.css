@@ -246,13 +246,13 @@ body {
 }
 
 .header-brand {
+  display: inline-flex;
+  align-items: center;
   font-size: 24px;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--secondary-color), var(--accent-color));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   letter-spacing: -0.5px;
   text-decoration: none;
+  color: #fbbf24;
 }
 
 .header-links {
@@ -1752,4 +1752,3 @@ body {
 .action-item.delete:hover {
   background: rgba(239, 68, 68, 0.1);
 }
-

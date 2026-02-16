@@ -46,9 +46,11 @@ function PropertiesPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const saved = localStorage.getItem('elitenest:sidebarCollapsed');
-      return saved === '0' ? false : true;
+      if (saved === '0') return false;
+      if (saved === '1') return true;
+      return false;
     } catch {
-      return true;
+      return false;
     }
   });
   const [filters, setFilters] = useState({
@@ -72,10 +74,8 @@ function PropertiesPage() {
   const [wishlist, setWishlist] = useState([]);
 
   const closeSidebarOnWeb = () => {
-    if (window.innerWidth > 768) {
-      setSidebarCollapsed(true);
-      localStorage.setItem('elitenest:sidebarCollapsed', '1');
-    }
+    setSidebarCollapsed(true);
+    localStorage.setItem('elitenest:sidebarCollapsed', '1');
   };
 
   const toggleSidebar = () => {
@@ -266,12 +266,11 @@ function PropertiesPage() {
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
-  // 2. Define the click handler - no auth check needed since page is protected
   const handleViewDetailsClick = (propertyId) => {
-    // Since PropertiesPage is wrapped in ProtectedRoute, user is already authenticated
-    // Just navigate directly to the property details page
     navigate(`/properties/${propertyId}`);
   };
+
+  const greeting = user ? (user.user_metadata?.full_name || user.email?.split("@")[0] || "User") : "Guest";
 
   if (loading) {
     return (
@@ -281,104 +280,8 @@ function PropertiesPage() {
     );
   }
 
-  if (properties.length === 0) {
-    return (
-      <div className="empty-container">
-        <h2>No properties found</h2>
-        <p>There are no properties available at the moment.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="dashboard-container dark-theme">
-      <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">Elite Nest</Link>
-          <button onClick={toggleSidebar} className="sidebar-toggle-btn">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-          </button>
-        </div>
-        <nav className="sidebar-nav">
-          <Link to="/dashboard" className="nav-item" onClick={closeSidebarOnWeb}>
-            <span className="nav-icon"><Icons.Home /></span>
-            <span>Dashboard</span>
-          </Link>
-          <Link to="/properties" className="nav-item active" onClick={closeSidebarOnWeb}>
-            <span className="nav-icon"><Icons.Property /></span>
-            <span>Properties</span>
-          </Link>
-          <Link to="/mylistings" className="nav-item" onClick={closeSidebarOnWeb}>
-            <span className="nav-icon"><Icons.Search /></span>
-            <span>My Listings</span>
-          </Link>
-          <Link to="/favorites?tab=appointments" className="nav-item" onClick={closeSidebarOnWeb}>
-            <span className="nav-icon"><Icons.Calendar /></span>
-            <span>Appointment History</span>
-          </Link>
-          <Link to="/favorites?tab=saved" className="nav-item" onClick={closeSidebarOnWeb}>
-            <span className="nav-icon"><Icons.Heart /></span>
-            <span>Saved Properties</span>
-          </Link>
-          <Link to="/notifications" className="nav-item" onClick={closeSidebarOnWeb}>
-            <span className="nav-icon"><Icons.Bell /></span>
-            <span>Notifications</span>
-          </Link>
-          <Link to="/profile" className="nav-item" onClick={closeSidebarOnWeb}>
-            <span className="nav-icon"><Icons.User /></span>
-            <span>Profile</span>
-          </Link>
-          <Link to="/settings" className="nav-item" onClick={closeSidebarOnWeb}>
-            <span className="nav-icon"><Icons.Settings /></span>
-            <span>Settings</span>
-          </Link>
-          <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-            <button onClick={() => { handleSignOut(); closeSidebarOnWeb(); }} className="nav-item" style={{ width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger-color)' }}>
-              <span className="nav-icon"><Icons.LogOut /></span>
-              <span>Sign Out</span>
-            </button>
-          </div>
-        </nav>
-      </aside>
-    <div className={`main-content ${sidebarCollapsed ? 'expanded' : ''}`}>
-      <header className="top-header">
-        <div className="header-left">
-          <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-          </button>
-          <Link to="/" className="header-brand">Elite Nest</Link>
-          <nav className="header-links">
-            <Link to="/" className="header-link">Home</Link>
-            <Link to="/properties" className="header-link">Properties</Link>
-            <Link to="/contact" className="header-link">Contact</Link>
-            <Link to="/about" className="header-link">About Us</Link>
-          </nav>
-        </div>
-        <div className="header-actions">
-          <div style={{ position: 'relative' }}>
-            <button 
-              className="icon-btn" 
-              onClick={() => navigate('/notifications')}
-              aria-label="Notifications"
-            >
-              <Icons.Bell />
-            </button>
-            {unreadCount > 0 && (
-              <span style={{
-                position: "absolute",
-                top: "0px",
-                right: "0px",
-                width: "8px",
-                height: "8px",
-                backgroundColor: "var(--danger-color)",
-                borderRadius: "50%"
-              }}></span>
-            )}
-          </div>
-        </div>
-      </header>
-      <div className="dashboard-page-content">
-      {/* Top toolbar: type filters, search, view and filters toggle */}
+  const renderContent = () => (
+    <div className="dashboard-page-content">
       <div className="properties-toolbar">
         <div className="properties-type-filters">
           <button className={`type-seg ${typeFilter === 'sale' ? 'active' : ''}`} onClick={() => setTypeFilter(prev => prev === 'sale' ? '' : 'sale')}>Sell</button>
@@ -399,7 +302,6 @@ function PropertiesPage() {
           <button onClick={() => setShowFilters(s => !s)} className="icon-btn">Filters</button>
         </div>
       </div>
-      {/* Filter Sidebar + Main (flex container) */}
       <div className="properties-main-container">
       <div className={`filter-sidebar ${showFilters ? 'open' : ''}`}>
         <h3>Filters</h3>
@@ -436,25 +338,13 @@ function PropertiesPage() {
             <option value="2 BHK">2 BHK</option>
             <option value="3 BHK">3 BHK</option>
             <option value="4 BHK">4 BHK</option>
-            <option value="Shared">Shared</option>
+            <option value="5 BHK">5+ </option>
           </select>
           <select name="type" value={filters.type} onChange={handleFilterChange} className="filter-select">
             <option value="">All Types</option>
             <option value="rent">Rent</option>
             <option value="sale">Sale</option>
-            <option value="pg">PG/Co-living</option>
-          </select>
-          <select name="ownerType" value={filters.ownerType} onChange={handleFilterChange} className="filter-select">
-            <option value="">All Owners</option>
-            <option value="owner">Owner</option>
-            <option value="builder">Builder</option>
-          </select>
-          <select name="bachelorFriendly" value={filters.bachelorFriendly} onChange={handleFilterChange} className="filter-select">
-            <option value="">All Categories</option>
-            <option value="family">Family</option>
-            <option value="boys">Boys</option>
-            <option value="girls">Girls</option>
-            <option value="shared">Shared</option>
+            <option value="pg">Lease</option>
           </select>
           <select name="furnished" value={filters.furnished} onChange={handleFilterChange} className="filter-select">
             <option value="">All Furnishing</option>
@@ -586,9 +476,167 @@ function PropertiesPage() {
         )}
       </div>
       </div>
-      </div>
-      <Footer />
     </div>
+  );
+
+  if (properties.length === 0) {
+    return (
+      <div className="empty-container">
+        <h2>No properties found</h2>
+        <p>There are no properties available at the moment.</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="dashboard-container dark-theme">
+        <main className="main-content" style={{ marginLeft: 0 }}>
+          <header className="top-header">
+            <div className="header-left">
+              <Link to="/" className="header-brand">
+                <img
+                  src="/elite-nest-logo.png"
+                  alt="Elite Nest"
+                  style={{ height: "56px", objectFit: "contain" }}
+                />
+                <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+              </Link>
+              <nav className="header-links">
+                <Link to="/" className="header-link">Home</Link>
+                <Link to="/properties" className="header-link">Properties</Link>
+                <Link to="/contact" className="header-link">Contact</Link>
+                <Link to="/about" className="header-link">About Us</Link>
+              </nav>
+            </div>
+            <div className="header-actions">
+              <Link to="/loginpage" style={{ textDecoration: 'none' }}>
+                <button className="promo-btn" style={{ padding: '8px 20px', fontSize: '14px' }}>
+                  Sign In
+                </button>
+              </Link>
+            </div>
+          </header>
+          {renderContent()}
+          <Footer />
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="dashboard-container dark-theme">
+      <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <div className="sidebar-header">
+          <Link to="/" className="sidebar-logo">Menu</Link>
+          <button onClick={toggleSidebar} className="sidebar-toggle-btn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+        </div>
+        <nav className="sidebar-nav">
+          <Link to="/dashboard" className="nav-item" onClick={closeSidebarOnWeb}>
+            <span className="nav-icon"><Icons.Home /></span>
+            <span>Dashboard</span>
+          </Link>
+          <Link to="/properties" className="nav-item active" onClick={closeSidebarOnWeb}>
+            <span className="nav-icon"><Icons.Property /></span>
+            <span>Properties</span>
+          </Link>
+          <Link to="/mylistings" className="nav-item" onClick={closeSidebarOnWeb}>
+            <span className="nav-icon"><Icons.Search /></span>
+            <span>My Listings</span>
+          </Link>
+          <Link to="/favorites?tab=appointments" className="nav-item" onClick={closeSidebarOnWeb}>
+            <span className="nav-icon"><Icons.Calendar /></span>
+            <span>Appointment History</span>
+          </Link>
+          <Link to="/favorites?tab=saved" className="nav-item" onClick={closeSidebarOnWeb}>
+            <span className="nav-icon"><Icons.Heart /></span>
+            <span>Saved Properties</span>
+          </Link>
+          <Link to="/notifications" className="nav-item" onClick={closeSidebarOnWeb}>
+            <span className="nav-icon"><Icons.Bell /></span>
+            <span>Notifications</span>
+          </Link>
+          <Link to="/profile" className="nav-item" onClick={closeSidebarOnWeb}>
+            <span className="nav-icon"><Icons.User /></span>
+            <span>Profile</span>
+          </Link>
+          <Link to="/settings" className="nav-item" onClick={closeSidebarOnWeb}>
+            <span className="nav-icon"><Icons.Settings /></span>
+            <span>Settings</span>
+          </Link>
+          <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+            <button onClick={() => { handleSignOut(); closeSidebarOnWeb(); }} className="nav-item" style={{ width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger-color)' }}>
+              <span className="nav-icon"><Icons.LogOut /></span>
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </nav>
+      </aside>
+      <div className={`main-content ${sidebarCollapsed ? 'expanded' : ''}`}>
+        <header className="top-header">
+          <div className="header-left">
+            <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+            <Link to="/" className="header-brand">
+              <img
+                src="/elite-nest-logo.png"
+                alt="Elite Nest"
+                style={{ height: "56px", objectFit: "contain" }}
+              />
+              <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+            </Link>
+            <nav className="header-links">
+              <Link to="/" className="header-link">Home</Link>
+              <Link to="/properties" className="header-link">Properties</Link>
+              <Link to="/contact" className="header-link">Contact</Link>
+              <Link to="/about" className="header-link">About Us</Link>
+            </nav>
+          </div>
+          <div className="header-actions">
+            <div style={{ position: 'relative' }}>
+              <button 
+                className="icon-btn" 
+                onClick={() => navigate('/notifications')}
+                aria-label="Notifications"
+              >
+                <Icons.Bell />
+              </button>
+              {unreadCount > 0 && (
+                <span style={{
+                  position: "absolute",
+                  top: "0px",
+                  right: "0px",
+                  width: "8px",
+                  height: "8px",
+                  backgroundColor: "var(--danger-color)",
+                  borderRadius: "50%"
+                }}></span>
+              )}
+            </div>
+            <div
+              className="user-profile"
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate('/profile')}
+            >
+              <div className="user-avatar">
+                {greeting.charAt(0).toUpperCase()}
+              </div>
+              <div className="user-info">
+                <span className="user-name">{greeting}</span>
+                <span className="user-role">User</span>
+              </div>
+            </div>
+            <button onClick={handleSignOut} className="icon-btn" title="Sign Out">
+              <Icons.LogOut />
+            </button>
+          </div>
+        </header>
+        {renderContent()}
+        <Footer />
+      </div>
     </div>
   );
 }

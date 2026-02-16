@@ -245,9 +245,9 @@ export default function Footer() {
           <h3>Contact</h3>
           <div className="contact-info">
             <p><strong>Elite Nest Pvt. Ltd.</strong></p>
-            <p>address Center Box. #1,<br />Dullay, NI 62606</p>
-            <p>email@elitenest.com</p>
-            <p>+1 (32) 227 4566</p>
+            <p>Poornaprajna Institute Of Management Udupi</p>
+            <p>elitenest07@gmail.com</p>
+            <p>+91 8970431369<br />+91 80505 62765</p>
           </div>
         </div>
 

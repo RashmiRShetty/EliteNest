@@ -41,10 +41,8 @@ const Seller = () => {
   }, []);
 
   const closeSidebarOnWeb = () => {
-    if (window.innerWidth > 768) {
-      setSidebarCollapsed(true);
-      localStorage.setItem('elitenest:sidebarCollapsed', '1');
-    }
+    setSidebarCollapsed(true);
+    localStorage.setItem('elitenest:sidebarCollapsed', '1');
   };
 
   const toggleSidebar = () => {
@@ -76,7 +74,7 @@ const Seller = () => {
     <div className="dashboard-container dark-theme">
       <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <Link to="/" className="sidebar-logo">Menu</Link>
           <button onClick={toggleSidebar} className="sidebar-toggle-btn">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
@@ -129,7 +127,14 @@ const Seller = () => {
             <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
               <Icons.Menu />
             </button>
-            <Link to="/" className="header-brand">Elite Nest</Link>
+          <Link to="/" className="header-brand">
+            <img
+              src="/elite-nest-logo.png"
+              alt="Elite Nest"
+              style={{ height: "56px", objectFit: "contain" }}
+            />
+            <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+          </Link>
             <nav className="header-links">
               <Link to="/" className="header-link">Home</Link>
               <Link to="/properties" className="header-link">Properties</Link>

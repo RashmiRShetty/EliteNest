@@ -34,10 +34,8 @@ export default function ContactPage() {
   }, []);
 
   const closeSidebarOnWeb = () => {
-    if (window.innerWidth > 768) {
-      setSidebarCollapsed(true);
-      localStorage.setItem('elitenest:sidebarCollapsed', '1');
-    }
+    setSidebarCollapsed(true);
+    localStorage.setItem('elitenest:sidebarCollapsed', '1');
   };
 
   const toggleSidebar = () => {
@@ -57,7 +55,7 @@ export default function ContactPage() {
     <div className="dashboard-container dark-theme">
       <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <Link to="/" className="sidebar-logo">Menu</Link>
           <button onClick={toggleSidebar} className="sidebar-toggle-btn">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
@@ -110,7 +108,14 @@ export default function ContactPage() {
             <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
               <Icons.Menu />
             </button>
-            <Link to="/" className="header-brand">Elite Nest</Link>
+            <Link to="/" className="header-brand">
+              <img
+                src="/elite-nest-logo.png"
+                alt="Elite Nest"
+                style={{ height: "56px", objectFit: "contain" }}
+              />
+              <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+            </Link>
             <nav className="header-links">
               <Link to="/" className="header-link">Home</Link>
               <Link to="/properties" className="header-link">Properties</Link>
@@ -139,17 +144,17 @@ export default function ContactPage() {
               <div className="contact-info-box">
                 <h3>📍 Address</h3>
                 <p>
-                  Elite Nest Headquarters<br />
-                  123 Property Street<br />
-                  Mumbai, India - 400001
+                  <br>Poornaprajna Institute of Management</br>
+                  <br>Udupi, Karnataka</br>
+                  <br>India  </br>
                 </p>
               </div>
 
               <div className="contact-info-box">
                 <h3>📞 Phone</h3>
                 <p>
-                  +91-1234567890<br />
-                  +91-9876543210<br />
+                  +91-8970431369<br />
+                  +91-8050562765<br />
                   Mon - Fri: 9AM - 6PM
                 </p>
               </div>
@@ -157,9 +162,9 @@ export default function ContactPage() {
               <div className="contact-info-box">
                 <h3>📧 Email</h3>
                 <p>
-                  support@elitenest.com<br />
-                  info@elitenest.com<br />
-                  sales@elitenest.com
+                  elitenest07@gmail.com<br />
+                  rashmi.mca.2024@pim.ac.in<br />
+                  rachana.mca.2024@pim.ac.in
                 </p>
               </div>
 

@@ -414,10 +414,8 @@ export default function MyListingsPage() {
 
 
   const closeSidebarOnWeb = () => {
-    if (window.innerWidth > 768) {
-      setSidebarCollapsed(true);
-      localStorage.setItem('elitenest:sidebarCollapsed', '1');
-    }
+    setSidebarCollapsed(true);
+    localStorage.setItem('elitenest:sidebarCollapsed', '1');
   };
 
   const toggleSidebar = () => {
@@ -433,7 +431,19 @@ export default function MyListingsPage() {
     navigate("/", { replace: true });
   };
 
-  // Filter & Sort Logic
+  const isPropertyExpired = (property) => {
+    if (property.status !== "approved") return false;
+    const createdAt = new Date(property.created_at);
+    const now = new Date();
+    const pkg = (property.package_name || "Silver").toLowerCase();
+    let validityDays = 15;
+    if (pkg === "gold") validityDays = 30;
+    else if (pkg === "platinum") validityDays = 45;
+    const expiryDate = new Date(createdAt);
+    expiryDate.setDate(createdAt.getDate() + validityDays);
+    return now > expiryDate;
+  };
+
   const filteredProperties = properties
     .filter(property => {
       const searchLower = searchQuery.toLowerCase();
@@ -445,9 +455,9 @@ export default function MyListingsPage() {
       if (!matchesSearch) return false;
 
       if (filter === "all") return true;
-      if (filter === "active") return property.status === "approved";
+      if (filter === "active") return property.status === "approved" && !isPropertyExpired(property);
       if (filter === "pending") return property.status === "pending";
-      if (filter === "sold") return property.status === "sold"; // Assuming 'sold' status exists or future use
+      if (filter === "sold") return isPropertyExpired(property);
       
       return true;
     })
@@ -491,7 +501,7 @@ export default function MyListingsPage() {
       {/* Sidebar */}
       <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">Elite Nest</Link>
+          <Link to="/" className="sidebar-logo">Menu</Link>
           <button onClick={toggleSidebar} className="sidebar-toggle-btn">
             <Icons.Menu />
           </button>
@@ -546,7 +556,14 @@ export default function MyListingsPage() {
             <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
               <Icons.Menu />
             </button>
-            <Link to="/" className="header-brand">Elite Nest</Link>
+            <Link to="/" className="header-brand">
+              <img
+                src="/elite-nest-logo.png"
+                alt="Elite Nest"
+                style={{ height: "56px", objectFit: "contain" }}
+              />
+              <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
+            </Link>
             <nav className="header-links">
               <Link to="/dashboard" className="header-link">Home</Link>
               <Link to="/properties" className="header-link">Properties</Link>
@@ -559,7 +576,7 @@ export default function MyListingsPage() {
                <Icons.Plus /> <span className="hide-mobile">Add Property</span>
             </Link>
 
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', marginRight: '12px' }}>
               <button 
                 className="icon-btn" 
                 onClick={() => navigate('/notifications')}
@@ -579,8 +596,20 @@ export default function MyListingsPage() {
                 }}></span>
               )}
             </div>
+            <button
+              className="icon-btn"
+              onClick={handleSignOut}
+              aria-label="Logout"
+              style={{ marginRight: '12px' }}
+            >
+              <Icons.LogOut />
+            </button>
             
-            <div className="user-profile">
+            <div
+              className="user-profile"
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate('/profile')}
+            >
               <div className="user-avatar">
                 {greeting.charAt(0).toUpperCase()}
               </div>
@@ -643,7 +672,7 @@ export default function MyListingsPage() {
               <button className={`tab-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>All</button>
               <button className={`tab-btn ${filter === 'active' ? 'active' : ''}`} onClick={() => setFilter('active')}>Active</button>
               <button className={`tab-btn ${filter === 'pending' ? 'active' : ''}`} onClick={() => setFilter('pending')}>Pending</button>
-              <button className={`tab-btn ${filter === 'sold' ? 'active' : ''}`} onClick={() => setFilter('sold')}>Sold</button>
+              <button className={`tab-btn ${filter === 'sold' ? 'active' : ''}`} onClick={() => setFilter('sold')}>Expired</button>
             </div>
 
             <select 
@@ -690,19 +719,7 @@ export default function MyListingsPage() {
                       const photos = getArray(property.photos);
                       const displayImage = images[0] || photos[0] || 'https://via.placeholder.com/400x300?text=No+Image';
                       
-                      // Calculate expiry based on created_at and package
-                      const isExpired = (() => {
-                        if (property.status !== "approved") return false;
-                        const createdAt = new Date(property.created_at);
-                        const now = new Date();
-                        const pkg = (property.package_name || "Silver").toLowerCase();
-                        let validityDays = 15;
-                        if (pkg === "gold") validityDays = 30;
-                        else if (pkg === "platinum") validityDays = 45;
-                        const expiryDate = new Date(createdAt);
-                        expiryDate.setDate(createdAt.getDate() + validityDays);
-                        return now > expiryDate;
-                      })();
+                      const isExpired = isPropertyExpired(property);
 
                       return (
                     <motion.div 
