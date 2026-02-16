@@ -31,6 +31,13 @@ const AboutUsPage = () => {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
   }, []);
+  const closeSidebarOnWeb = () => {
+    if (window.innerWidth > 768) {
+      setSidebarCollapsed(true);
+      localStorage.setItem('elitenest:sidebarCollapsed', '1');
+    }
+  };
+
   const toggleSidebar = () => {
     setSidebarCollapsed(prev => {
       const next = !prev;
@@ -52,40 +59,40 @@ const AboutUsPage = () => {
           </button>
         </div>
         <nav className="sidebar-nav">
-          <Link to="/dashboard" className="nav-item">
+          <Link to="/dashboard" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Home /></span>
             <span>Dashboard</span>
           </Link>
-          <Link to="/properties" className="nav-item">
+          <Link to="/properties" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Property /></span>
             <span>Properties</span>
           </Link>
-          <Link to="/mylistings" className="nav-item">
+          <Link to="/mylistings" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Search /></span>
             <span>My Listings</span>
           </Link>
-          <Link to="/favorites" className="nav-item">
+          <Link to="/favorites" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Calendar /></span>
             <span>Appointment History</span>
           </Link>
-          <Link to="/favorites" className="nav-item">
+          <Link to="/favorites" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Heart /></span>
             <span>Saved Properties</span>
           </Link>
-          <Link to="/messages" className="nav-item">
+          <Link to="/messages" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Message /></span>
             <span>Messages</span>
           </Link>
-          <Link to="/profile" className="nav-item">
+          <Link to="/profile" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.User /></span>
             <span>Profile</span>
           </Link>
-          <Link to="/settings" className="nav-item">
+          <Link to="/settings" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Settings /></span>
             <span>Settings</span>
           </Link>
           <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-            <button onClick={handleSignOut} className="nav-item" style={{ width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger-color)' }}>
+            <button onClick={() => { handleSignOut(); closeSidebarOnWeb(); }} className="nav-item" style={{ width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger-color)' }}>
               <span className="nav-icon"><Icons.LogOut /></span>
               <span>Sign Out</span>
             </button>

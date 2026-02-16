@@ -77,6 +77,8 @@ const PropertyForm = () => {
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [viewDetailsPackage, setViewDetailsPackage] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
 
   const packages = [
     {
@@ -177,6 +179,13 @@ const PropertyForm = () => {
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (!error) navigate("/", { replace: true });
+  };
+
+  const closeSidebarOnWeb = () => {
+    if (window.innerWidth > 768) {
+      setSidebarCollapsed(true);
+      localStorage.setItem('elitenest:sidebarCollapsed', '1');
+    }
   };
 
   const toggleSidebar = () => {
@@ -558,6 +567,67 @@ const PropertyForm = () => {
     }
   };
 
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const getPackageAmountPaise = () => {
+    const priceStr = selectedPackage?.price || "0";
+    const numeric = parseInt(String(priceStr).replace(/[^\d]/g, ""), 10) || 0;
+    return numeric * 100;
+  };
+
+  const startRazorpayPayment = async () => {
+    if (!selectedPackage) return;
+    const key = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_NgwEwXk1hnhpL6";
+    setPaymentProcessing(true);
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+      setPaymentProcessing(false);
+      alert("Unable to load Razorpay.");
+      return;
+    }
+    const amount = getPackageAmountPaise();
+    const options = {
+      key,
+      amount,
+      currency: "INR",
+      name: "Elite Nest",
+      description: `${selectedPackage.name} Listing`,
+      handler: function (response) {
+        setPaymentProcessing(false);
+        setShowPaymentModal(false);
+        submitProperty();
+      },
+      prefill: {
+        name: formData.contactName || "",
+        email: formData.contactEmail || "",
+        contact: formData.contactPhone || ""
+      },
+      theme: { color: "#d97706" }
+    };
+    const rzp = new window.Razorpay(options);
+    rzp.on("payment.failed", function () {
+      setPaymentProcessing(false);
+      alert("Payment failed.");
+    });
+    rzp.open();
+  };
+
+  const onConfirmPayment = async () => {
+    await startRazorpayPayment();
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!validateStep(4)) return;
@@ -574,12 +644,11 @@ const PropertyForm = () => {
       return;
     }
     
-    // Simulate payment processing before final submission
-    if (selectedPackage && selectedPackage.price !== 'Free') {
-       alert(`Proceeding to payment for ${selectedPackage.name} package...`);
+    if (!selectedPackage) {
+      alert("Please select a listing package before submitting.");
+      return;
     }
-    
-    submitProperty();
+    setShowPaymentModal(true);
   };
 
   // Helper for rendering pills
@@ -682,42 +751,42 @@ const PropertyForm = () => {
         </div>
         
         <nav className="sidebar-nav">
-          <Link to="/dashboard" className="nav-item">
+          <Link to="/dashboard" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Home /></span>
             <span>Dashboard</span>
           </Link>
-          <Link to="/properties" className="nav-item">
+          <Link to="/properties" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Property /></span>
             <span>Properties</span>
           </Link>
-          <Link to="/mylistings" className="nav-item">
+          <Link to="/mylistings" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Search /></span>
             <span>My Listings</span>
           </Link>
-          <Link to="/favorites" className="nav-item">
+          <Link to="/favorites" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Calendar /></span>
             <span>Appointment History</span>
           </Link>
-          <Link to="/favorites" className="nav-item">
+          <Link to="/favorites" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Heart /></span>
             <span>Saved Properties</span>
           </Link>
-          <Link to="/notifications" className="nav-item">
+          <Link to="/notifications" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Bell /></span>
             <span>Notifications</span>
           </Link>
-          <Link to="/profile" className="nav-item">
+          <Link to="/profile" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.User /></span>
             <span>Profile</span>
           </Link>
-          <Link to="/settings" className="nav-item">
+          <Link to="/settings" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Settings /></span>
             <span>Settings</span>
           </Link>
         </nav>
 
         <div className="sidebar-footer">
-          <button onClick={handleSignOut} className="nav-item logout-btn">
+          <button onClick={() => { handleSignOut(); closeSidebarOnWeb(); }} className="nav-item logout-btn">
             <span className="nav-icon"><Icons.LogOut /></span>
             <span>Log Out</span>
           </button>
@@ -1269,6 +1338,36 @@ const PropertyForm = () => {
           </div>
         </form>
       </div>
+      
+      {showPaymentModal && (
+        <div className="payment-modal-overlay" style={{ zIndex: 2100 }}>
+          <div className="payment-modal" style={{ maxWidth: '520px', height: 'auto', maxHeight: '90vh' }}>
+            <div className="payment-modal-header">
+              <h2>Payment Required</h2>
+              <button onClick={() => setShowPaymentModal(false)} className="close-btn">×</button>
+            </div>
+            <div style={{ padding: '24px' }}>
+              <div style={{ fontSize: '18px', marginBottom: '8px' }}>
+                {selectedPackage?.name} Package
+              </div>
+              <div style={{ 
+                fontSize: '32px', 
+                fontWeight: 'bold', 
+                marginBottom: '24px',
+                color: 'var(--text-primary, #fff)'
+              }}>
+                {selectedPackage?.price}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button onClick={() => setShowPaymentModal(false)} className="btn-secondary">Cancel</button>
+                <button onClick={onConfirmPayment} className="btn-primary" disabled={paymentProcessing}>
+                  {paymentProcessing ? "Processing..." : "Pay & Submit"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       <MapModalContent />
           </div>

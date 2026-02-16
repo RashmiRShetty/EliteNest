@@ -17,6 +17,7 @@ export default function AdminDashboard() {
   const [leases, setLeases] = useState([]);
   const [rentals, setRentals] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState(null);
@@ -310,9 +311,21 @@ export default function AdminDashboard() {
   };
   const fetchUsers = async () => {
     setLoading(true);
-    const { data } = await supabase.from("profiles").select("*");
-    setUsers(data || []);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, created_at, is_admin")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (error) {
+      console.error("Error fetching users (registration):", error);
+      console.error("Error fetching users (profiles):", error);
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fetchProperties = async () => {
@@ -378,19 +391,34 @@ export default function AdminDashboard() {
     try {
       console.log("Fetching ALL bookings for admin dashboard...");
       
-      const { data: bookingsData, error: bookingsError } = await supabase
-        .from("bookings")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const [bookingsResult, bookingsCountResult] = await Promise.all([
+        supabase
+          .from("bookings")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("bookings")
+          .select("id", { count: "exact", head: true })
+      ]);
+
+      const { data: bookingsData, error: bookingsError } = bookingsResult;
+      const { count: bookingsCount, error: bookingsCountError } = bookingsCountResult;
 
       if (bookingsError) {
         console.error("Bookings table error:", bookingsError.message);
         setFetchError(bookingsError.message);
         setAppointments([]);
+        setAppointmentsCount( );
         return;
       }
 
       const combinedRaw = bookingsData || [];
+      if (bookingsCountError) {
+        console.warn("Bookings count error:", bookingsCountError.message);
+        setAppointmentsCount(combinedRaw.length);
+      } else {
+        setAppointmentsCount(bookingsCount || 0);
+      }
 
       console.log(`Raw bookings: ${combinedRaw.length}`);
 
@@ -457,6 +485,7 @@ export default function AdminDashboard() {
       console.error("Critical exception in fetchAppointments:", err);
       setFetchError(`Exception: ${err.message}`);
       setAppointments([]);
+      setAppointmentsCount(0);
     } finally {
       setLoading(false);
     }
@@ -493,10 +522,10 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#f5f5f5" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: activeTab === "overview" ? "linear-gradient(135deg, #0a0e27 0%, #1a1a3e 50%, #0f0f23 100%)" : "#f5f5f5" }}>
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} handleLogout={handleLogout} />
 
-      <div style={{ marginLeft: 250, padding: 40, flex: 1 }}>
+      <div style={{ marginLeft: 250, padding: activeTab === "overview" ? 0 : 40, flex: 1, background: activeTab === "overview" ? "transparent" : "transparent" }}>
         <Header activeTab={activeTab} />
 
         {activeTab === "overview" && <Overview />}
@@ -509,10 +538,10 @@ export default function AdminDashboard() {
             setShowModal={setShowModal}
           />
         )}
-        {activeTab === "sellers" && <ListingTab title="Sellers" data={sellers} fetchData={fetchSellers} updateStatus={updateStatus} loading={loading} setEditingProperty={setEditingProperty} setShowEditModal={setShowEditModal} />}
-        {activeTab === "leases" && <ListingTab title="Leases" data={leases} fetchData={fetchLeases} updateStatus={updateStatus} loading={loading} setEditingProperty={setEditingProperty} setShowEditModal={setShowEditModal} />}
-        {activeTab === "rentals" && <ListingTab title="Rentals" data={rentals} fetchData={fetchRentals} updateStatus={updateStatus} loading={loading} setEditingProperty={setEditingProperty} setShowEditModal={setShowEditModal} />}
-        {activeTab === "appointments" && <AppointmentsTab appointments={appointments} fetchAppointments={fetchAppointments} loading={loading} fetchError={fetchError} />}
+        {activeTab === "sellers" && <SellersTab sellers={sellers} fetchSellers={fetchSellers} updateStatus={updateStatus} setEditingProperty={setEditingProperty} setShowModal={setShowModal} />}
+        {activeTab === "leases" && <LeasesTab leases={leases} fetchLeases={fetchLeases} updateStatus={updateStatus} setEditingProperty={setEditingProperty} setShowModal={setShowModal} />}
+        {activeTab === "rentals" && <RentalsTab rentals={rentals} fetchRentals={fetchRentals} updateStatus={updateStatus} setEditingProperty={setEditingProperty} setShowModal={setShowModal} />}
+        {activeTab === "appointments" && <AppointmentsTab appointments={appointments} fetchAppointments={fetchAppointments} loading={loading} fetchError={fetchError} appointmentsCount={appointmentsCount} />}
         {activeTab === "feedback" && <FeedbackTab feedback={feedback} fetchFeedback={fetchFeedback} deleteFeedback={deleteFeedback} loading={loading} />}
 
         {showEditModal && editingProperty && (
@@ -589,11 +618,7 @@ function Sidebar({ activeTab, setActiveTab, handleLogout }) {
 }
 
 function Header({ activeTab }) {
-  return (
-    <div style={{ background: "#fff", padding: 50, borderRadius: 8, marginBottom: 30, display: "flex", justifyContent: "space-between" }}>
-      <h1 style={{ margin: 0, textTransform: "capitalize", color: "#000" }}>{activeTab}</h1>
-    </div>
-  );
+  return null;
 }
 
 function Overview() {
@@ -636,95 +661,540 @@ function Overview() {
 
   const StatCard = ({ title, value, icon, color }) => (
     <div style={{
-      background: "#fff",
-      border: "1px solid #e5e7eb",
-      borderRadius: 8,
-      padding: 20,
+      background: `linear-gradient(135deg, rgba(20, 25, 50, 0.8) 0%, rgba(25, 35, 60, 0.8) 100%)`,
+      border: `2px solid ${color}40`,
+      borderRadius: 20,
+      padding: 32,
       flex: 1,
-      minWidth: "200px",
+      minWidth: "220px",
       textAlign: "center",
-      transition: "all 0.3s",
+      transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
       cursor: "pointer",
-      boxShadow: "0 2px 4px rgba(0,0,0,0.05)"
+      boxShadow: `0 15px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1)`,
+      position: "relative",
+      overflow: "hidden",
+      backdropFilter: "blur(10px)"
     }}
     onMouseEnter={(e) => {
-      e.currentTarget.style.boxShadow = "0 8px 16px rgba(0,0,0,0.1)";
-      e.currentTarget.style.transform = "translateY(-4px)";
+      e.currentTarget.style.boxShadow = `0 30px 70px ${color}30, inset 0 1px 0 rgba(255, 255, 255, 0.2)`;
+      e.currentTarget.style.transform = "translateY(-15px) scale(1.08)";
+      e.currentTarget.style.borderColor = color;
+      e.currentTarget.style.background = `linear-gradient(135deg, rgba(30, 35, 60, 0.9) 0%, rgba(35, 45, 70, 0.9) 100%)`;
     }}
     onMouseLeave={(e) => {
-      e.currentTarget.style.boxShadow = "0 2px 4px rgba(0,0,0,0.05)";
-      e.currentTarget.style.transform = "translateY(0)";
+      e.currentTarget.style.boxShadow = `0 15px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1)`;
+      e.currentTarget.style.transform = "translateY(0) scale(1)";
+      e.currentTarget.style.borderColor = `${color}40`;
+      e.currentTarget.style.background = `linear-gradient(135deg, rgba(20, 25, 50, 0.8) 0%, rgba(25, 35, 60, 0.8) 100%)`;
     }}>
-      <div style={{ fontSize: "32px", marginBottom: 10 }}>{icon}</div>
-      <div style={{ color: "#6b7280", fontSize: "0.9rem", marginBottom: 8 }}>{title}</div>
-      <div style={{ color: color, fontSize: "28px", fontWeight: "bold" }}>{value}</div>
+      <div style={{
+        position: "absolute",
+        top: "-50%",
+        left: "-50%",
+        width: "200%",
+        height: "200%",
+        background: `radial-gradient(circle, ${color}20 0%, transparent 70%)`,
+        animation: "pulse 3s ease-in-out infinite",
+        pointerEvents: "none"
+      }}></div>
+
+      <div style={{ position: "relative", zIndex: 2 }}>
+        <div style={{ fontSize: "52px", marginBottom: 20, display: "inline-block", filter: "drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))", animation: "float 3s ease-in-out infinite" }}>{icon}</div>
+        <div style={{ color: "#a0aec0", fontSize: "0.95rem", marginBottom: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: "1px" }}>{title}</div>
+        <div style={{ color: color, fontSize: "48px", fontWeight: "900", textShadow: `0 2px 15px ${color}60`, lineHeight: "1" }}>{value}</div>
+      </div>
     </div>
   );
 
   return (
-    <div>
+    <div style={{
+      minHeight: "100vh",
+      background: "linear-gradient(135deg, #0a0e27 0%, #1a1a3e 50%, #0f0f23 100%)",
+      padding: "50px 20px",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
+      position: "relative",
+      overflow: "hidden"
+    }}>
       <div style={{
-        background: "#fff",
-        padding: 30,
-        borderRadius: 8,
-        color: "#000",
-        marginBottom: 30
-      }}>
-        <h2 style={{ color: "#000", marginTop: 0 }}>Welcome to Elite Nest Admin Dashboard</h2>
-        <p style={{ color: "#6b7280" }}>Manage properties, users, and appointments from one central location.</p>
-        <button
-          onClick={fetchOverviewData}
-          disabled={loading}
-          style={{
-            padding: "10px 20px",
-            backgroundColor: loading ? "#9ca3af" : "#1e40af",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            cursor: loading ? "not-allowed" : "pointer",
-            fontSize: "1rem",
-            fontWeight: "500"
-          }}
-        >
-          {loading ? "Refreshing..." : "Refresh Stats"}
-        </button>
-      </div>
+        position: "absolute",
+        width: "400px",
+        height: "400px",
+        background: "radial-gradient(circle, rgba(102, 126, 234, 0.15) 0%, transparent 70%)",
+        borderRadius: "50%",
+        top: "-100px",
+        left: "-100px",
+        pointerEvents: "none"
+      }}></div>
+      <div style={{
+        position: "absolute",
+        width: "300px",
+        height: "300px",
+        background: "radial-gradient(circle, rgba(236, 72, 153, 0.15) 0%, transparent 70%)",
+        borderRadius: "50%",
+        bottom: "-50px",
+        right: "-50px",
+        pointerEvents: "none"
+      }}></div>
 
       <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-        gap: 20,
-        marginBottom: 30
+        maxWidth: "1400px",
+        margin: "0 auto",
+        position: "relative",
+        zIndex: 1
       }}>
-        <StatCard title="Total Users" value={overviewData.totalUsers} icon="👥" color="#1e40af" />
-        <StatCard title="Total Properties" value={overviewData.totalProperties} icon="🏠" color="#059669" />
-        <StatCard title="Pending Properties" value={overviewData.pendingProperties} icon="⏳" color="#f59e0b" />
-        <StatCard title="Total Appointments" value={overviewData.totalAppointments} icon="📅" color="#8b5cf6" />
+        <div style={{
+          background: "linear-gradient(135deg, rgba(20, 25, 50, 0.9) 0%, rgba(25, 30, 60, 0.9) 100%)",
+          padding: "50px 40px",
+          borderRadius: 24,
+          color: "#fff",
+          marginBottom: 40,
+          boxShadow: "0 30px 100px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+          backdropFilter: "blur(30px)",
+          border: "1px solid rgba(102, 126, 234, 0.2)",
+          animation: "slideDown 0.6s ease-out"
+        }}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "30px"
+          }}>
+            <div style={{ flex: 1, minWidth: "300px" }}>
+              <div style={{ fontSize: "3.2rem", marginBottom: "16px", fontWeight: "900" }}>📊</div>
+              <h2 style={{ color: "#fff", margin: "0 0 12px 0", fontSize: "2.8rem", fontWeight: "900", background: "linear-gradient(135deg, #667eea 0%, #764ba2 50%, #ec4899 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Dashboard Overview</h2>
+              <p style={{ color: "#b0c4de", fontSize: "1.1rem", margin: "0", lineHeight: "1.6" }}>Real-time insights into your platform's performance and key metrics</p>
+            </div>
+            <button
+              onClick={fetchOverviewData}
+              disabled={loading}
+              style={{
+                padding: "14px 32px",
+                backgroundColor: loading ? "#4b5563" : "linear-gradient(135deg, #667eea, #764ba2)",
+                backgroundImage: !loading ? "linear-gradient(135deg, #667eea, #764ba2)" : undefined,
+                color: "#fff",
+                border: "none",
+                borderRadius: 12,
+                cursor: loading ? "not-allowed" : "pointer",
+                fontSize: "1.05rem",
+                fontWeight: "700",
+                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                boxShadow: loading ? "0 4px 15px rgba(75, 85, 99, 0.4)" : "0 8px 25px rgba(102, 126, 234, 0.5)",
+                whiteSpace: "nowrap"
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.target.style.transform = "translateY(-3px) scale(1.05)";
+                  e.target.style.boxShadow = "0 15px 40px rgba(102, 126, 234, 0.7)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = "translateY(0) scale(1)";
+                e.target.style.boxShadow = loading ? "0 4px 15px rgba(75, 85, 99, 0.4)" : "0 8px 25px rgba(102, 126, 234, 0.5)";
+              }}
+            >
+              {loading ? "⏳ Refreshing..." : "🔄 Refresh Stats"}
+            </button>
+          </div>
+        </div>
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+          gap: 32,
+          marginBottom: 40
+        }}>
+          <StatCard title="Total Users" value={overviewData.totalUsers} icon="👥" color="#667eea" />
+          <StatCard title="Total Properties" value={overviewData.totalProperties} icon="🏠" color="#764ba2" />
+          <StatCard title="Pending Properties" value={overviewData.pendingProperties} icon="⏳" color="#f59e0b" />
+          <StatCard title="Total Appointments" value={overviewData.totalAppointments} icon="📅" color="#ec4899" />
+        </div>
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gap: 24,
+          marginTop: 40
+        }}>
+          <div style={{
+            background: "linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)",
+            border: "1px solid rgba(102, 126, 234, 0.3)",
+            borderRadius: 16,
+            padding: 24,
+            backdropFilter: "blur(10px)",
+            transition: "all 0.3s ease"
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = "0 15px 40px rgba(102, 126, 234, 0.2)";
+            e.currentTarget.style.transform = "translateY(-5px)";
+            e.currentTarget.style.borderColor = "rgba(102, 126, 234, 0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = "none";
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.borderColor = "rgba(102, 126, 234, 0.3)";
+          }}>
+            <div style={{ fontSize: "28px", marginBottom: "12px" }}>📈</div>
+            <h3 style={{ margin: "0 0 8px 0", color: "#fff", fontSize: "1.2rem", fontWeight: "700" }}>Platform Growth</h3>
+            <p style={{ margin: 0, color: "#b0c4de", fontSize: "0.95rem" }}>Track your platform metrics in real-time</p>
+          </div>
+
+          <div style={{
+            background: "linear-gradient(135deg, rgba(236, 72, 153, 0.1) 0%, rgba(245, 158, 11, 0.1) 100%)",
+            border: "1px solid rgba(236, 72, 153, 0.3)",
+            borderRadius: 16,
+            padding: 24,
+            backdropFilter: "blur(10px)",
+            transition: "all 0.3s ease"
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = "0 15px 40px rgba(236, 72, 153, 0.2)";
+            e.currentTarget.style.transform = "translateY(-5px)";
+            e.currentTarget.style.borderColor = "rgba(236, 72, 153, 0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = "none";
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.borderColor = "rgba(236, 72, 153, 0.3)";
+          }}>
+            <div style={{ fontSize: "28px", marginBottom: "12px" }}>🎯</div>
+            <h3 style={{ margin: "0 0 8px 0", color: "#fff", fontSize: "1.2rem", fontWeight: "700" }}>Active Listings</h3>
+            <p style={{ margin: 0, color: "#b0c4de", fontSize: "0.95rem" }}>Manage and approve property listings</p>
+          </div>
+
+          <div style={{
+            background: "linear-gradient(135deg, rgba(118, 75, 162, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%)",
+            border: "1px solid rgba(118, 75, 162, 0.3)",
+            borderRadius: 16,
+            padding: 24,
+            backdropFilter: "blur(10px)",
+            transition: "all 0.3s ease"
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = "0 15px 40px rgba(118, 75, 162, 0.2)";
+            e.currentTarget.style.transform = "translateY(-5px)";
+            e.currentTarget.style.borderColor = "rgba(118, 75, 162, 0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = "none";
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.borderColor = "rgba(118, 75, 162, 0.3)";
+          }}>
+            <div style={{ fontSize: "28px", marginBottom: "12px" }}>💼</div>
+            <h3 style={{ margin: "0 0 8px 0", color: "#fff", fontSize: "1.2rem", fontWeight: "700" }}>User Management</h3>
+            <p style={{ margin: 0, color: "#b0c4de", fontSize: "0.95rem" }}>Monitor and manage user accounts</p>
+          </div>
+        </div>
       </div>
+
+      <style>{`
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        @keyframes pulse {
+          0%, 100% {
+            transform: scale(1);
+            opacity: 0.5;
+          }
+          50% {
+            transform: scale(1.1);
+            opacity: 0.2;
+          }
+        }
+        @keyframes float {
+          0%, 100% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-10px);
+          }
+        }
+      `}</style>
     </div>
   );
 }
 
 function UsersTab({ users, fetchUsers, loading }) {
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const usersPerPage = 4;
+
+  const getDisplayName = (user) => {
+    const fromFields =
+      user.name ||
+      user.full_name ||
+      [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+      user.username;
+    if (fromFields && String(fromFields).trim().length > 0) return fromFields;
+    if (user.email) return String(user.email).split("@")[0];
+    return "Unknown User";
+  };
+
+  const getInitials = (name) => {
+    return name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join("");
+  };
+
+  const getDisplayId = (user, fallbackIndex) => {
+    const raw = user.user_id || user.id || user.uuid || "";
+    const suffix = raw ? String(raw).slice(-4).toUpperCase() : String(fallbackIndex).padStart(4, "0");
+    return `#EN-${suffix}`;
+  };
+
+  const getRole = (user) => user.role || user.user_role || user.account_type || user.user_type || "Buyer";
+  const getStatus = (user) => {
+    if (user.status) return user.status;
+    if (user.is_active === false) return "Inactive";
+    return "Active";
+  };
+
+  const filteredUsers = users.filter((user) => {
+    const name = getDisplayName(user).toLowerCase();
+    const email = (user.email || "").toLowerCase();
+    return name.includes(searchQuery.toLowerCase()) || email.includes(searchQuery.toLowerCase());
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / usersPerPage));
+  const startIndex = currentPage * usersPerPage;
+  const displayedUsers = filteredUsers.slice(startIndex, startIndex + usersPerPage);
+  const showingFrom = filteredUsers.length === 0 ? 0 : startIndex + 1;
+  const showingTo = Math.min(startIndex + usersPerPage, filteredUsers.length);
+
+  const goToPreviousPage = () => {
+    setCurrentPage((prev) => Math.max(0, prev - 1));
+  };
+
+  const goToNextPage = () => {
+    setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
+  };
+
+  const pageNumbers = (() => {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (currentPage <= 1) return [1, 2, 3, "…", totalPages];
+    if (currentPage >= totalPages - 2) return [1, "…", totalPages - 2, totalPages - 1, totalPages];
+    return [1, "…", currentPage + 1, "…", totalPages];
+  })();
+
   return (
-    <div>
-      <button onClick={fetchUsers}>{loading ? "Loading..." : "Load Users"}</button>
-      <ul>
-        {users.map((u, i) => (
-          <li key={i}>{u.email}</li>
-        ))}
-      </ul>
+    <div style={{ fontFamily: "Inter, system-ui, -apple-system, Segoe UI, sans-serif" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: "1.8rem", color: "#1f2937" }}>Users</h2>
+          <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: "0.95rem" }}>Manage and monitor all platform members.</p>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ position: "relative" }}>
+            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af", fontSize: "0.9rem" }}>🔍</span>
+            <input
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(0); }}
+              placeholder="Search users..."
+              style={{
+                padding: "10px 14px 10px 34px",
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+                background: "#fff",
+                fontSize: "0.95rem",
+                width: 220
+              }}
+            />
+          </div>
+
+          <button
+            onClick={fetchUsers}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              background: "#fff",
+              color: "#374151",
+              fontWeight: 600,
+              cursor: "pointer"
+            }}
+          >
+            {loading ? "Loading..." : "Refresh"}
+          </button>
+
+          <button
+            style={{
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "none",
+              background: "linear-gradient(135deg, #f97316, #f59e0b)",
+              color: "#fff",
+              fontWeight: 700,
+              cursor: "pointer",
+              boxShadow: "0 8px 20px rgba(249, 115, 22, 0.35)"
+            }}
+          >
+            + Add New User
+          </button>
+        </div>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #eef2f7", boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)", overflow: "hidden" }}>
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid #eef2f7", display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1fr 1fr", color: "#94a3b8", fontWeight: 600, fontSize: "0.8rem", letterSpacing: "0.6px", textTransform: "uppercase" }}>
+          <div>User Profile</div>
+          <div>Email Address</div>
+          <div>Role</div>
+          <div>Status</div>
+          <div>Actions</div>
+        </div>
+
+        {displayedUsers.length === 0 ? (
+          <div style={{ padding: "28px 22px", color: "#6b7280" }}>{loading ? "Loading users..." : "No users found."}</div>
+        ) : (
+          displayedUsers.map((user, index) => {
+            const name = getDisplayName(user);
+            const initials = getInitials(name);
+            const role = getRole(user);
+            const status = getStatus(user);
+            const statusColor = status.toLowerCase() === "active" ? "#10b981" : "#9ca3af";
+            return (
+              <div key={user.id || index} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1fr 1fr", padding: "18px 22px", alignItems: "center", borderBottom: "1px solid #f1f5f9" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "#6b7280" }}>
+                    {initials}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, color: "#111827" }}>{name}</div>
+                    <div style={{ fontSize: "0.85rem", color: "#9ca3af" }}>ID: {getDisplayId(user, startIndex + index + 1)}</div>
+                  </div>
+                </div>
+
+                <div style={{ color: "#6b7280" }}>{user.email || "N/A"}</div>
+
+                <div>
+                  <span style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    background: role.toLowerCase() === "admin" ? "#ede9fe" : role.toLowerCase() === "seller" ? "#fef3c7" : "#dbeafe",
+                    color: role.toLowerCase() === "admin" ? "#7c3aed" : role.toLowerCase() === "seller" ? "#d97706" : "#2563eb",
+                    fontWeight: 600,
+                    fontSize: "0.85rem"
+                  }}>
+                    {role}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: statusColor, fontWeight: 600 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor, display: "inline-block" }}></span>
+                  {status}
+                </div>
+
+                <button
+                  title="Actions"
+                  onClick={() => alert("Row actions coming soon")}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #e5e7eb",
+                    background: "#fff",
+                    color: "#374151",
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  Actions
+                </button>
+              </div>
+            );
+          })
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 22px", color: "#6b7280" }}>
+          <div>Showing {showingFrom} to {showingTo} of {filteredUsers.length} users</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={goToPreviousPage}
+              disabled={currentPage === 0}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                border: "1px solid #e5e7eb",
+                background: currentPage === 0 ? "#f3f4f6" : "#fff",
+                color: "#6b7280",
+                cursor: currentPage === 0 ? "not-allowed" : "pointer"
+              }}
+            >
+              ‹
+            </button>
+            {pageNumbers.map((page, idx) => (
+              <button
+                key={`${page}-${idx}`}
+                onClick={() => typeof page === "number" && setCurrentPage(page - 1)}
+                disabled={page === "…"}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  border: "1px solid #e5e7eb",
+                  background: page === currentPage + 1 ? "#f97316" : "#fff",
+                  color: page === currentPage + 1 ? "#fff" : "#6b7280",
+                  fontWeight: 600,
+                  cursor: page === "…" ? "default" : "pointer"
+                }}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              onClick={goToNextPage}
+              disabled={currentPage >= totalPages - 1}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                border: "1px solid #e5e7eb",
+                background: currentPage >= totalPages - 1 ? "#f3f4f6" : "#fff",
+                color: "#6b7280",
+                cursor: currentPage >= totalPages - 1 ? "not-allowed" : "pointer"
+              }}
+            >
+              ›
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 function PropertiesTab({ properties, fetchProperties, setSelectedProperty, setShowModal }) {
   const [currentPage, setCurrentPage] = React.useState(0);
-  const propertiesPerPage = 3;
+  const [selectedPropertyLocal, setSelectedPropertyLocal] = React.useState(null);
+  const [showModalLocal, setShowModalLocal] = React.useState(false);
+  const [filterStatus, setFilterStatus] = React.useState("all");
+  const propertiesPerPage = 8;
   
-  const totalPages = Math.ceil(properties.length / propertiesPerPage);
+  const filteredProperties = filterStatus === "all" 
+    ? properties 
+    : properties.filter(p => p.status === filterStatus);
+  
+  const totalPages = Math.ceil(filteredProperties.length / propertiesPerPage);
   const startIndex = currentPage * propertiesPerPage;
-  const displayedProperties = properties.slice(startIndex, startIndex + propertiesPerPage);
+  const displayedProperties = filteredProperties.slice(startIndex, startIndex + propertiesPerPage);
   
   const goToPreviousPage = () => {
     setCurrentPage((prev) => Math.max(0, prev - 1));
@@ -734,40 +1204,391 @@ function PropertiesTab({ properties, fetchProperties, setSelectedProperty, setSh
     setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
   };
 
+  const handleStatusChange = async (propertyId, newStatus) => {
+    try {
+      console.log("Updating status for property:", propertyId, "to:", newStatus);
+      
+      const { data: propertyData, error: fetchError } = await supabase
+        .from("properties")
+        .select("user_id, created_by, title, contact_email, contact_name")
+        .eq("id", propertyId)
+        .single();
+
+      if (fetchError) {
+        console.error("Error fetching property:", fetchError);
+      }
+
+      let property = propertyData;
+
+      const { data: updatedData, error } = await supabase
+        .from("properties")
+        .update({ status: newStatus })
+        .eq("id", propertyId)
+        .select();
+
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
+
+      if (!property && updatedData && updatedData.length > 0) {
+        property = updatedData[0];
+      }
+
+      console.log("Status updated successfully:", updatedData);
+
+      if (newStatus === "accepted" && property) {
+        let userId = property.user_id || property.created_by;
+        
+        if (!userId && property.contact_email) {
+          try {
+            const { data: userData } = await supabase
+              .from("profiles")
+              .select("id")
+              .eq("email", property.contact_email)
+              .single();
+            
+            if (userData) {
+              userId = userData.id;
+            } else {
+              const { data: authUsers } = await supabase.auth.admin.listUsers();
+              const foundUser = authUsers?.users?.find(u => u.email === property.contact_email);
+              if (foundUser) {
+                userId = foundUser.id;
+              }
+            }
+          } catch (err) {
+            console.warn("Could not find user by email:", err);
+          }
+        }
+        
+        if (userId) {
+          try {
+            const { error: notifError } = await supabase
+              .from("notifications")
+              .insert({
+                user_id: userId,
+                type: "property_approved",
+                title: "Property Approved!",
+                message: `Your property "${property.title || 'Property'}" has been approved. Click "Post Now" to upload documents and complete payment.`,
+                read: false,
+                created_at: new Date().toISOString()
+              });
+
+            if (notifError) {
+              console.warn("Could not create notification (table may not exist):", notifError);
+              try {
+                await supabase
+                  .from("messages")
+                  .insert({
+                    user_id: userId,
+                    subject: "Property Approved",
+                    message: `Your property "${property.title || 'Property'}" has been approved. You can now post it by clicking "Post Now" in My Listings.`,
+                    created_at: new Date().toISOString()
+                  });
+              } catch (msgErr) {
+                console.warn("Could not create message either:", msgErr);
+              }
+            } else {
+              console.log("Notification created for user:", userId);
+            }
+          } catch (notifErr) {
+            console.warn("Error creating notification:", notifErr);
+          }
+        } else {
+          console.warn("Could not find user_id for property notification");
+        }
+      }
+
+      await fetchProperties();
+      setShowModalLocal(false);
+      alert(`Property status updated to ${newStatus} successfully!`);
+    } catch (error) {
+      console.error("Error updating status:", error);
+      alert("Error updating status: " + (error.message || "Unknown error"));
+    }
+  };
+
+  const handleEdit = (property) => {
+    setShowModalLocal(false);
+    setSelectedProperty(property);
+    setShowModal(true);
+  };
+
   return (
     <div>
-      <button onClick={fetchProperties}>Load Properties</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+        <button onClick={fetchProperties} style={{
+          padding: "12px 24px",
+          cursor: "pointer",
+          background: "linear-gradient(135deg, #667eea, #764ba2)",
+          color: "#fff",
+          border: "none",
+          borderRadius: "8px",
+          fontSize: "1rem",
+          fontWeight: "600",
+          boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
+          transition: "all 0.3s"
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.transform = "translateY(-2px)";
+          e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.transform = "translateY(0)";
+          e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+        }}>🏠 Load Properties</button>
+        
+        {properties.length > 0 && (
+          <>
+            <span style={{
+              background: "rgba(102, 126, 234, 0.15)",
+              color: "#fff",
+              padding: "10px 20px",
+              borderRadius: "8px",
+              fontSize: "0.95rem",
+              fontWeight: "600",
+              border: "1px solid rgba(102, 126, 234, 0.3)"
+            }}>
+              Total: {properties.length} properties
+            </span>
+            
+            <div style={{ 
+              display: 'flex', 
+              background: 'rgba(102, 126, 234, 0.1)', 
+              padding: '6px', 
+              borderRadius: '10px', 
+              border: '1px solid rgba(102, 126, 234, 0.3)',
+              gap: '4px'
+            }}>
+              <button 
+                onClick={() => { setFilterStatus("all"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "all" ? "linear-gradient(135deg, #667eea, #764ba2)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                All
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("pending"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "pending" ? "linear-gradient(135deg, #f59e0b, #d97706)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ⏳ Pending
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("accepted"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "accepted" ? "linear-gradient(135deg, #10b981, #059669)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ✅ Accepted
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("rejected"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "rejected" ? "linear-gradient(135deg, #ef4444, #dc2626)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ❌ Rejected
+              </button>
+            </div>
+          </>
+        )}
+      </div>
       <div style={{ marginTop: 20 }}>
         {properties.length === 0 ? (
-          <p style={{ color: "#000" }}>No properties loaded.</p>
+          <div style={{
+            background: "rgba(102, 126, 234, 0.1)",
+            border: "2px dashed rgba(102, 126, 234, 0.3)",
+            borderRadius: "16px",
+            padding: "60px 40px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🏠</div>
+            <p style={{ 
+              color: "#fff", 
+              fontSize: "1.3rem", 
+              fontWeight: "600",
+              margin: "0 0 8px 0"
+            }}>No properties loaded</p>
+            <p style={{
+              color: "#a0aec0",
+              fontSize: "1rem",
+              margin: 0
+            }}>Click "Load Properties" button to fetch properties from database</p>
+          </div>
+        ) : filteredProperties.length === 0 ? (
+          <div style={{
+            background: "rgba(102, 126, 234, 0.1)",
+            border: "2px dashed rgba(102, 126, 234, 0.3)",
+            borderRadius: "16px",
+            padding: "60px 40px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🔍</div>
+            <p style={{ 
+              color: "#fff", 
+              fontSize: "1.3rem", 
+              fontWeight: "600",
+              margin: "0 0 8px 0"
+            }}>No properties found</p>
+            <p style={{
+              color: "#a0aec0",
+              fontSize: "1rem",
+              margin: 0
+            }}>No properties match the selected filter: {filterStatus}</p>
+          </div>
         ) : (
           <>
-            <div style={{ display: "grid", gap: 12, marginBottom: 20 }}>
-              {displayedProperties.map((p) => (
-                <div
-                  key={p.id}
-                  onClick={() => { setSelectedProperty(p); setShowModal(true); }}
-                  style={{
-                    padding: 16,
-                    background: "#fff",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    color: "#000",
-                    transition: "all 0.2s"
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)"}
-                  onMouseLeave={(e) => e.currentTarget.style.boxShadow = "none"}
-                >
-                  <h3 style={{ margin: "0 0 8px 0", color: "#000" }}>{p.title}</h3>
-                  <p style={{ margin: 0, color: "#000", fontSize: "0.9rem" }}>Type: {p.property_listing_type}</p>
-                  {p.status === "rejected" && p.rejection_reason && (
-                    <p style={{ margin: "4px 0 0 0", color: "#dc2626", fontSize: "0.8rem" }}>
-                      <strong>Reason:</strong> {p.rejection_reason}
-                    </p>
-                  )}
-                </div>
-              ))}
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: 24, 
+              marginBottom: 20 
+            }}>
+              {displayedProperties.map((p) => {
+                const imageUrl = (p.image_urls && p.image_urls.length > 0) 
+                  ? p.image_urls[0] 
+                  : (p.photos && p.photos.length > 0) 
+                    ? p.photos[0] 
+                    : "https://via.placeholder.com/300x200?text=No+Image";
+                
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => { setSelectedPropertyLocal(p); setShowModalLocal(true); }}
+                    style={{
+                      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+                      border: "2px solid #667eea40",
+                      borderRadius: 16,
+                      cursor: "pointer",
+                      color: "#fff",
+                      transition: "all 0.3s",
+                      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                      overflow: "hidden"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = "0 20px 50px rgba(102, 126, 234, 0.6)";
+                      e.currentTarget.style.transform = "translateY(-8px)";
+                      e.currentTarget.style.borderColor = "#667eea";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.5)";
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.borderColor = "#667eea40";
+                    }}
+                  >
+                    <div style={{
+                      width: "100%",
+                      height: "200px",
+                      overflow: "hidden",
+                      position: "relative"
+                    }}>
+                      <img 
+                        src={imageUrl} 
+                        alt={p.title} 
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover"
+                        }}
+                        onError={(e) => { e.target.src = "https://via.placeholder.com/300x200?text=No+Image"; }}
+                      />
+                      <div style={{
+                        position: "absolute",
+                        top: 12,
+                        right: 12,
+                        background: p.status === "accepted" ? "rgba(16, 185, 129, 0.9)" : 
+                                   p.status === "rejected" ? "rgba(239, 68, 68, 0.9)" : 
+                                   "rgba(245, 158, 11, 0.9)",
+                        color: "#fff",
+                        padding: "6px 12px",
+                        borderRadius: "8px",
+                        fontSize: "0.75rem",
+                        fontWeight: "700",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px"
+                      }}>
+                        {p.status || "pending"}
+                      </div>
+                    </div>
+                    <div style={{ padding: 20 }}>
+                      <h3 style={{ 
+                        margin: "0 0 12px 0", 
+                        color: "#fff", 
+                        fontSize: "1.3rem",
+                        fontWeight: "700",
+                        lineHeight: "1.3"
+                      }}>{p.title}</h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#667eea", fontSize: "1.1rem" }}>📍</span>
+                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.city}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#667eea", fontSize: "1.1rem" }}>🏠</span>
+                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.property_listing_type}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#667eea", fontSize: "1.1rem" }}>💰</span>
+                          <span style={{ color: "#fff", fontSize: "1rem", fontWeight: "700" }}>₹{p.price}</span>
+                        </div>
+                        {p.bedrooms && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ color: "#667eea", fontSize: "1.1rem" }}>🛏️</span>
+                            <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.bedrooms} Bedrooms</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{
+                        marginTop: 16,
+                        paddingTop: 16,
+                        borderTop: "1px solid rgba(102, 126, 234, 0.2)",
+                        color: "#667eea",
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                        textAlign: "center"
+                      }}>
+                        Click to view full details →
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{
@@ -775,39 +1596,78 @@ function PropertiesTab({ properties, fetchProperties, setSelectedProperty, setSh
               justifyContent: "center",
               alignItems: "center",
               gap: 16,
-              marginTop: 20
+              marginTop: 32,
+              background: "rgba(102, 126, 234, 0.08)",
+              padding: "20px",
+              borderRadius: "12px"
             }}>
               <button
                 onClick={goToPreviousPage}
                 disabled={currentPage === 0}
                 style={{
-                  padding: "10px 16px",
-                  backgroundColor: currentPage === 0 ? "#d1d5db" : "#1e40af",
+                  padding: "12px 24px",
+                  background: currentPage === 0 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #667eea, #764ba2)",
                   color: "#fff",
                   border: "none",
-                  borderRadius: 6,
+                  borderRadius: 8,
                   cursor: currentPage === 0 ? "not-allowed" : "pointer",
-                  fontSize: "1.2rem",
-                  fontWeight: "bold"
+                  fontSize: "1rem",
+                  fontWeight: "700",
+                  transition: "all 0.3s",
+                  boxShadow: currentPage === 0 ? "none" : "0 4px 15px rgba(102, 126, 234, 0.4)"
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage > 0) {
+                    e.target.style.transform = "translateY(-2px)";
+                    e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage > 0) {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+                  }
                 }}
               >
                 ← Previous
               </button>
-              <span style={{ color: "#000", fontSize: "1rem", fontWeight: "500" }}>
+              <span style={{ 
+                color: "#fff", 
+                fontSize: "1.1rem", 
+                fontWeight: "600",
+                background: "rgba(102, 126, 234, 0.15)",
+                padding: "10px 20px",
+                borderRadius: "8px",
+                border: "1px solid rgba(102, 126, 234, 0.3)"
+              }}>
                 Page {currentPage + 1} of {totalPages}
               </span>
               <button
                 onClick={goToNextPage}
                 disabled={currentPage === totalPages - 1}
                 style={{
-                  padding: "10px 16px",
-                  backgroundColor: currentPage === totalPages - 1 ? "#d1d5db" : "#1e40af",
+                  padding: "12px 24px",
+                  background: currentPage === totalPages - 1 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #667eea, #764ba2)",
                   color: "#fff",
                   border: "none",
-                  borderRadius: 6,
+                  borderRadius: 8,
                   cursor: currentPage === totalPages - 1 ? "not-allowed" : "pointer",
-                  fontSize: "1.2rem",
-                  fontWeight: "bold"
+                  fontSize: "1rem",
+                  fontWeight: "700",
+                  transition: "all 0.3s",
+                  boxShadow: currentPage === totalPages - 1 ? "none" : "0 4px 15px rgba(102, 126, 234, 0.4)"
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage < totalPages - 1) {
+                    e.target.style.transform = "translateY(-2px)";
+                    e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage < totalPages - 1) {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+                  }
                 }}
               >
                 Next →
@@ -815,6 +1675,2471 @@ function PropertiesTab({ properties, fetchProperties, setSelectedProperty, setSh
             </div>
           </>
         )}
+      </div>
+      
+      {showModalLocal && selectedPropertyLocal && (
+        <PropertyDetailsModal
+          property={selectedPropertyLocal}
+          onClose={() => setShowModalLocal(false)}
+          onEdit={handleEdit}
+          onStatusChange={handleStatusChange}
+        />
+      )}
+    </div>
+  );
+}
+
+function SellersTab({ sellers, fetchSellers, updateStatus, setEditingProperty, setShowModal }) {
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const [selectedSeller, setSelectedSeller] = React.useState(null);
+  const [showModalLocal, setShowModalLocal] = React.useState(false);
+  const [filterStatus, setFilterStatus] = React.useState("all");
+  const sellersPerPage = 8;
+  
+  const filteredSellers = filterStatus === "all" 
+    ? sellers 
+    : sellers.filter(p => p.status === filterStatus);
+  
+  const totalPages = Math.ceil(filteredSellers.length / sellersPerPage);
+  const startIndex = currentPage * sellersPerPage;
+  const displayedSellers = filteredSellers.slice(startIndex, startIndex + sellersPerPage);
+  
+  const goToPreviousPage = () => {
+    setCurrentPage((prev) => Math.max(0, prev - 1));
+  };
+  
+  const goToNextPage = () => {
+    setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
+  };
+
+  const handleStatusChange = async (propertyId, newStatus) => {
+    try {
+      console.log("Updating status for seller property:", propertyId, "to:", newStatus);
+      
+      const { data: propertyData, error: fetchError } = await supabase
+        .from("properties")
+        .select("user_id, created_by, title, contact_email, contact_name")
+        .eq("id", propertyId)
+        .single();
+
+      if (fetchError) {
+        console.error("Error fetching property:", fetchError);
+      }
+
+      let property = propertyData;
+
+      const { data: updatedData, error } = await supabase
+        .from("properties")
+        .update({ status: newStatus })
+        .eq("id", propertyId)
+        .select();
+
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
+
+      if (!property && updatedData && updatedData.length > 0) {
+        property = updatedData[0];
+      }
+
+      console.log("Status updated successfully:", updatedData);
+
+      if (newStatus === "accepted" && property) {
+        let userId = property.user_id || property.created_by;
+        
+        if (!userId && property.contact_email) {
+          try {
+            const { data: userData } = await supabase
+              .from("profiles")
+              .select("id")
+              .eq("email", property.contact_email)
+              .single();
+            
+            if (userData) {
+              userId = userData.id;
+            } else {
+              const { data: authUsers } = await supabase.auth.admin.listUsers();
+              const foundUser = authUsers?.users?.find(u => u.email === property.contact_email);
+              if (foundUser) {
+                userId = foundUser.id;
+              }
+            }
+          } catch (err) {
+            console.warn("Could not find user by email:", err);
+          }
+        }
+        
+        if (userId) {
+          try {
+            const { error: notifError } = await supabase
+              .from("notifications")
+              .insert({
+                user_id: userId,
+                type: "property_approved",
+                title: "Property Approved!",
+                message: `Your property "${property.title || 'Property'}" has been approved. Click "Post Now" to upload documents and complete payment.`,
+                read: false,
+                created_at: new Date().toISOString()
+              });
+
+            if (notifError) {
+              console.warn("Could not create notification (table may not exist):", notifError);
+              try {
+                await supabase
+                  .from("messages")
+                  .insert({
+                    user_id: userId,
+                    subject: "Property Approved",
+                    message: `Your property "${property.title || 'Property'}" has been approved. You can now post it by clicking "Post Now" in My Listings.`,
+                    created_at: new Date().toISOString()
+                  });
+              } catch (msgErr) {
+                console.warn("Could not create message either:", msgErr);
+              }
+            } else {
+              console.log("Notification created for user:", userId);
+            }
+          } catch (notifErr) {
+            console.warn("Error creating notification:", notifErr);
+          }
+        } else {
+          console.warn("Could not find user_id for property notification");
+        }
+      }
+
+      await fetchSellers();
+      setShowModalLocal(false);
+      alert(`Seller property status updated to ${newStatus} successfully!`);
+    } catch (error) {
+      console.error("Error updating status:", error);
+      alert("Error updating status: " + (error.message || "Unknown error"));
+    }
+  };
+
+  const handleEdit = (seller) => {
+    setShowModalLocal(false);
+    setEditingProperty(seller);
+    setShowModal(true);
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+        <button onClick={fetchSellers} style={{
+          padding: "12px 24px",
+          cursor: "pointer",
+          background: "linear-gradient(135deg, #764ba2, #ec4899)",
+          color: "#fff",
+          border: "none",
+          borderRadius: "8px",
+          fontSize: "1rem",
+          fontWeight: "600",
+          boxShadow: "0 4px 15px rgba(118, 75, 162, 0.4)",
+          transition: "all 0.3s"
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.transform = "translateY(-2px)";
+          e.target.style.boxShadow = "0 6px 20px rgba(118, 75, 162, 0.6)";
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.transform = "translateY(0)";
+          e.target.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.4)";
+        }}>🛍️ Load Sellers</button>
+        
+        {sellers.length > 0 && (
+          <>
+            <span style={{
+              background: "rgba(118, 75, 162, 0.15)",
+              color: "#fff",
+              padding: "10px 20px",
+              borderRadius: "8px",
+              fontSize: "0.95rem",
+              fontWeight: "600",
+              border: "1px solid rgba(118, 75, 162, 0.3)"
+            }}>
+              Total: {sellers.length} sellers
+            </span>
+            
+            <div style={{ 
+              display: 'flex', 
+              background: 'rgba(118, 75, 162, 0.1)', 
+              padding: '6px', 
+              borderRadius: '10px', 
+              border: '1px solid rgba(118, 75, 162, 0.3)',
+              gap: '4px'
+            }}>
+              <button 
+                onClick={() => { setFilterStatus("all"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "all" ? "linear-gradient(135deg, #764ba2, #ec4899)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                All
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("pending"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "pending" ? "linear-gradient(135deg, #f59e0b, #d97706)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ⏳ Pending
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("accepted"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "accepted" ? "linear-gradient(135deg, #10b981, #059669)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ✅ Accepted
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("rejected"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "rejected" ? "linear-gradient(135deg, #ef4444, #dc2626)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ❌ Rejected
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <div style={{ marginTop: 20 }}>
+        {sellers.length === 0 ? (
+          <div style={{
+            background: "rgba(118, 75, 162, 0.1)",
+            border: "2px dashed rgba(118, 75, 162, 0.3)",
+            borderRadius: "16px",
+            padding: "60px 40px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🛍️</div>
+            <p style={{ 
+              color: "#fff", 
+              fontSize: "1.3rem", 
+              fontWeight: "600",
+              margin: "0 0 8px 0"
+            }}>No sellers loaded</p>
+            <p style={{
+              color: "#a0aec0",
+              fontSize: "1rem",
+              margin: 0
+            }}>Click "Load Sellers" button to fetch seller properties from database</p>
+          </div>
+        ) : filteredSellers.length === 0 ? (
+          <div style={{
+            background: "rgba(118, 75, 162, 0.1)",
+            border: "2px dashed rgba(118, 75, 162, 0.3)",
+            borderRadius: "16px",
+            padding: "60px 40px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🔍</div>
+            <p style={{ 
+              color: "#fff", 
+              fontSize: "1.3rem", 
+              fontWeight: "600",
+              margin: "0 0 8px 0"
+            }}>No sellers found</p>
+            <p style={{
+              color: "#a0aec0",
+              fontSize: "1rem",
+              margin: 0
+            }}>No seller properties match the selected filter: {filterStatus}</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: 24, 
+              marginBottom: 20 
+            }}>
+              {displayedSellers.map((p) => {
+                const imageUrl = (p.image_urls && p.image_urls.length > 0) 
+                  ? p.image_urls[0] 
+                  : (p.photos && p.photos.length > 0) 
+                    ? p.photos[0] 
+                    : "https://via.placeholder.com/300x200?text=No+Image";
+                
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => { setSelectedSeller(p); setShowModalLocal(true); }}
+                    style={{
+                      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+                      border: "2px solid #764ba240",
+                      borderRadius: 16,
+                      cursor: "pointer",
+                      color: "#fff",
+                      transition: "all 0.3s",
+                      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                      overflow: "hidden"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = "0 20px 50px rgba(118, 75, 162, 0.6)";
+                      e.currentTarget.style.transform = "translateY(-8px)";
+                      e.currentTarget.style.borderColor = "#764ba2";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.5)";
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.borderColor = "#764ba240";
+                    }}
+                  >
+                    <div style={{
+                      width: "100%",
+                      height: "200px",
+                      overflow: "hidden",
+                      position: "relative"
+                    }}>
+                      <img 
+                        src={imageUrl} 
+                        alt={p.title} 
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover"
+                        }}
+                        onError={(e) => { e.target.src = "https://via.placeholder.com/300x200?text=No+Image"; }}
+                      />
+                      <div style={{
+                        position: "absolute",
+                        top: 12,
+                        right: 12,
+                        background: p.status === "accepted" ? "rgba(16, 185, 129, 0.9)" : 
+                                   p.status === "rejected" ? "rgba(239, 68, 68, 0.9)" : 
+                                   "rgba(245, 158, 11, 0.9)",
+                        color: "#fff",
+                        padding: "6px 12px",
+                        borderRadius: "8px",
+                        fontSize: "0.75rem",
+                        fontWeight: "700",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px"
+                      }}>
+                        {p.status || "pending"}
+                      </div>
+                    </div>
+                    <div style={{ padding: 20 }}>
+                      <h3 style={{ 
+                        margin: "0 0 12px 0", 
+                        color: "#fff", 
+                        fontSize: "1.3rem",
+                        fontWeight: "700",
+                        lineHeight: "1.3"
+                      }}>{p.title}</h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#764ba2", fontSize: "1.1rem" }}>📍</span>
+                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.city}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#764ba2", fontSize: "1.1rem" }}>🏠</span>
+                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.property_listing_type}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#764ba2", fontSize: "1.1rem" }}>💰</span>
+                          <span style={{ color: "#fff", fontSize: "1rem", fontWeight: "700" }}>₹{p.price}</span>
+                        </div>
+                        {p.bedrooms && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ color: "#764ba2", fontSize: "1.1rem" }}>🛏️</span>
+                            <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.bedrooms} Bedrooms</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{
+                        marginTop: 16,
+                        paddingTop: 16,
+                        borderTop: "1px solid rgba(118, 75, 162, 0.2)",
+                        color: "#764ba2",
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                        textAlign: "center"
+                      }}>
+                        Click to view full details →
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 16,
+              marginTop: 32,
+              background: "rgba(118, 75, 162, 0.08)",
+              padding: "20px",
+              borderRadius: "12px"
+            }}>
+              <button
+                onClick={goToPreviousPage}
+                disabled={currentPage === 0}
+                style={{
+                  padding: "12px 24px",
+                  background: currentPage === 0 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #764ba2, #ec4899)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: currentPage === 0 ? "not-allowed" : "pointer",
+                  fontSize: "1rem",
+                  fontWeight: "700",
+                  transition: "all 0.3s",
+                  boxShadow: currentPage === 0 ? "none" : "0 4px 15px rgba(118, 75, 162, 0.4)"
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage > 0) {
+                    e.target.style.transform = "translateY(-2px)";
+                    e.target.style.boxShadow = "0 6px 20px rgba(118, 75, 162, 0.6)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage > 0) {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.4)";
+                  }
+                }}
+              >
+                ← Previous
+              </button>
+              <span style={{ 
+                color: "#fff", 
+                fontSize: "1.1rem", 
+                fontWeight: "600",
+                background: "rgba(118, 75, 162, 0.15)",
+                padding: "10px 20px",
+                borderRadius: "8px",
+                border: "1px solid rgba(118, 75, 162, 0.3)"
+              }}>
+                Page {currentPage + 1} of {totalPages}
+              </span>
+              <button
+                onClick={goToNextPage}
+                disabled={currentPage === totalPages - 1}
+                style={{
+                  padding: "12px 24px",
+                  background: currentPage === totalPages - 1 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #764ba2, #ec4899)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: currentPage === totalPages - 1 ? "not-allowed" : "pointer",
+                  fontSize: "1rem",
+                  fontWeight: "700",
+                  transition: "all 0.3s",
+                  boxShadow: currentPage === totalPages - 1 ? "none" : "0 4px 15px rgba(118, 75, 162, 0.4)"
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage < totalPages - 1) {
+                    e.target.style.transform = "translateY(-2px)";
+                    e.target.style.boxShadow = "0 6px 20px rgba(118, 75, 162, 0.6)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage < totalPages - 1) {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.4)";
+                  }
+                }}
+              >
+                Next →
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      
+      {showModalLocal && selectedSeller && (
+        <SellerDetailsModal
+          seller={selectedSeller}
+          onClose={() => setShowModalLocal(false)}
+          onEdit={handleEdit}
+          onStatusChange={handleStatusChange}
+        />
+      )}
+    </div>
+  );
+}
+
+function SellerDetailsModal({ seller, onClose, onEdit, onStatusChange }) {
+  const [rejectionReason, setRejectionReason] = React.useState(seller.rejection_reason || "");
+  const [showRejectInput, setShowRejectInput] = React.useState(false);
+
+  const handleReject = async () => {
+    if (!rejectionReason.trim()) {
+      alert("Please provide a rejection reason");
+      return;
+    }
+    
+    try {
+      await supabase
+        .from("properties")
+        .update({ rejection_reason: rejectionReason })
+        .eq("id", seller.id);
+      
+      await onStatusChange(seller.id, "rejected");
+      setShowRejectInput(false);
+    } catch (error) {
+      console.error("Error updating rejection reason:", error);
+      alert("Error updating rejection reason");
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.85)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1000,
+      backdropFilter: "blur(5px)"
+    }}>
+      <div style={{
+        background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+        padding: 32,
+        borderRadius: 16,
+        maxWidth: "900px",
+        width: "90%",
+        maxHeight: "85vh",
+        overflowY: "auto",
+        color: "#fff",
+        border: "2px solid rgba(118, 75, 162, 0.3)",
+        boxShadow: "0 25px 80px rgba(0, 0, 0, 0.8)"
+      }}>
+        <h2 style={{
+          color: "#fff",
+          marginTop: 0,
+          fontSize: "2rem",
+          fontWeight: "bold",
+          background: "linear-gradient(135deg, #764ba2, #ec4899)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+          marginBottom: "24px"
+        }}>{seller.title}</h2>
+        
+        <div style={{ overflowX: "auto" }}>
+          <table style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            background: "rgba(118, 75, 162, 0.05)",
+            borderRadius: "8px"
+          }}>
+            <tbody>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600", width: "30%" }}>Type</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.type}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Area</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.area}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Bedrooms</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.bedrooms ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Bathrooms</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.bathrooms ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Parking</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.parking || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Furnished Status</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.furnished_status || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Balcony</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.balcony || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Nearby Places</td>
+                <td style={{ padding: "12px 16px", color: "#a0aec0" }}>{seller.nearby_places || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Description</td>
+                <td style={{ padding: "12px 16px", color: "#a0aec0" }}>{seller.description || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Address</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.address}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>City</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.city}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Price</td>
+                <td style={{ padding: "12px 16px", color: "#fff", fontSize: "1.2rem", fontWeight: "bold" }}>₹{seller.price}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Listing Type</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.property_listing_type}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Deposit</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.deposit ? `₹${seller.deposit}` : "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Min Duration</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.min_duration ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Contact Name</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.contact_name}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Contact Phone</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.contact_phone}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Contact Email</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{seller.contact_email}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Status</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <span style={{
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    backgroundColor: seller.status === "accepted" ? "rgba(5, 150, 105, 0.2)" : seller.status === "rejected" ? "rgba(220, 38, 38, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                    color: seller.status === "accepted" ? "#10b981" : seller.status === "rejected" ? "#ef4444" : "#f59e0b",
+                    fontWeight: "600",
+                    border: `1px solid ${seller.status === "accepted" ? "#10b981" : seller.status === "rejected" ? "#ef4444" : "#f59e0b"}`
+                  }}>
+                    {seller.status || "pending"}
+                  </span>
+                </td>
+              </tr>
+              {seller.rejection_reason && (
+                <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(239, 68, 68, 0.1)" }}>
+                  <td style={{ padding: "12px 16px", color: "#ef4444", fontWeight: "600", verticalAlign: "top" }}>Rejection Reason</td>
+                  <td style={{ padding: "12px 16px", color: "#fca5a5" }}>{seller.rejection_reason}</td>
+                </tr>
+              )}
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600", verticalAlign: "top" }}>Rejection Reason</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <textarea
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Enter rejection reason (required for rejection)"
+                    style={{
+                      width: "100%",
+                      minHeight: "80px",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "2px solid rgba(118, 75, 162, 0.3)",
+                      background: "rgba(26, 26, 46, 0.5)",
+                      color: "#fff",
+                      fontSize: "0.95rem",
+                      resize: "vertical",
+                      fontFamily: "inherit"
+                    }}
+                  />
+                </td>
+              </tr>
+              {seller.image_urls && seller.image_urls.length > 0 && (
+                <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                  <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600", verticalAlign: "top" }}>Images</td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {seller.image_urls.map((src, i) => (
+                        <img key={i} src={src} alt={`img-${i}`} style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 8, border: "2px solid rgba(118, 75, 162, 0.3)" }} />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              <tr>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600", verticalAlign: "top" }}>Actions</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => onEdit(seller)}
+                      style={{
+                        padding: "10px 20px",
+                        background: "linear-gradient(135deg, #667eea, #764ba2)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: "0 4px 12px rgba(118, 75, 162, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.transform = "translateY(-2px)";
+                        e.target.style.boxShadow = "0 6px 16px rgba(118, 75, 162, 0.6)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = "0 4px 12px rgba(118, 75, 162, 0.4)";
+                      }}
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      onClick={() => onStatusChange(seller.id, "accepted")}
+                      disabled={seller.status === "accepted"}
+                      style={{
+                        padding: "10px 20px",
+                        backgroundColor: seller.status === "accepted" ? "#6b7280" : "#10b981",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: seller.status === "accepted" ? "not-allowed" : "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: seller.status === "accepted" ? "none" : "0 4px 12px rgba(16, 185, 129, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (seller.status !== "accepted") {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 16px rgba(16, 185, 129, 0.6)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = seller.status === "accepted" ? "none" : "0 4px 12px rgba(16, 185, 129, 0.4)";
+                      }}
+                    >
+                      ✓ Accept
+                    </button>
+                    <button
+                      onClick={handleReject}
+                      disabled={seller.status === "rejected"}
+                      style={{
+                        padding: "10px 20px",
+                        backgroundColor: seller.status === "rejected" ? "#6b7280" : "#ef4444",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: seller.status === "rejected" ? "not-allowed" : "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: seller.status === "rejected" ? "none" : "0 4px 12px rgba(239, 68, 68, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (seller.status !== "rejected") {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 16px rgba(239, 68, 68, 0.6)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = seller.status === "rejected" ? "none" : "0 4px 12px rgba(239, 68, 68, 0.4)";
+                      }}
+                    >
+                      ✗ Reject
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: "24px",
+            padding: "12px 32px",
+            cursor: "pointer",
+            background: "linear-gradient(135deg, #764ba2, #ec4899)",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "1rem",
+            fontWeight: "600",
+            width: "100%",
+            transition: "all 0.3s",
+            boxShadow: "0 4px 15px rgba(118, 75, 162, 0.4)"
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.transform = "translateY(-2px)";
+            e.target.style.boxShadow = "0 6px 20px rgba(118, 75, 162, 0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = "translateY(0)";
+            e.target.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.4)";
+          }}
+        >Close</button>
+      </div>
+    </div>
+  );
+}
+
+function LeasesTab({ leases, fetchLeases, updateStatus, setEditingProperty, setShowModal }) {
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const [selectedLease, setSelectedLease] = React.useState(null);
+  const [showModalLocal, setShowModalLocal] = React.useState(false);
+  const [filterStatus, setFilterStatus] = React.useState("all");
+  const leasesPerPage = 8;
+  
+  const filteredLeases = filterStatus === "all" 
+    ? leases 
+    : leases.filter(p => p.status === filterStatus);
+  
+  const totalPages = Math.ceil(filteredLeases.length / leasesPerPage);
+  const startIndex = currentPage * leasesPerPage;
+  const displayedLeases = filteredLeases.slice(startIndex, startIndex + leasesPerPage);
+  
+  const goToPreviousPage = () => {
+    setCurrentPage((prev) => Math.max(0, prev - 1));
+  };
+  
+  const goToNextPage = () => {
+    setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
+  };
+
+  const handleStatusChange = async (propertyId, newStatus) => {
+    try {
+      console.log("Updating status for lease property:", propertyId, "to:", newStatus);
+      
+      const { data: propertyData, error: fetchError } = await supabase
+        .from("properties")
+        .select("user_id, created_by, title, contact_email, contact_name")
+        .eq("id", propertyId)
+        .single();
+
+      if (fetchError) {
+        console.error("Error fetching property:", fetchError);
+      }
+
+      let property = propertyData;
+
+      const { data: updatedData, error } = await supabase
+        .from("properties")
+        .update({ status: newStatus })
+        .eq("id", propertyId)
+        .select();
+
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
+
+      if (!property && updatedData && updatedData.length > 0) {
+        property = updatedData[0];
+      }
+
+      console.log("Status updated successfully:", updatedData);
+
+      if (newStatus === "accepted" && property) {
+        let userId = property.user_id || property.created_by;
+        
+        if (!userId && property.contact_email) {
+          try {
+            const { data: userData } = await supabase
+              .from("profiles")
+              .select("id")
+              .eq("email", property.contact_email)
+              .single();
+            
+            if (userData) {
+              userId = userData.id;
+            } else {
+              const { data: authUsers } = await supabase.auth.admin.listUsers();
+              const foundUser = authUsers?.users?.find(u => u.email === property.contact_email);
+              if (foundUser) {
+                userId = foundUser.id;
+              }
+            }
+          } catch (err) {
+            console.warn("Could not find user by email:", err);
+          }
+        }
+        
+        if (userId) {
+          try {
+            const { error: notifError } = await supabase
+              .from("notifications")
+              .insert({
+                user_id: userId,
+                type: "property_approved",
+                title: "Property Approved!",
+                message: `Your property "${property.title || 'Property'}" has been approved. Click "Post Now" to upload documents and complete payment.`,
+                read: false,
+                created_at: new Date().toISOString()
+              });
+
+            if (notifError) {
+              console.warn("Could not create notification (table may not exist):", notifError);
+              try {
+                await supabase
+                  .from("messages")
+                  .insert({
+                    user_id: userId,
+                    subject: "Property Approved",
+                    message: `Your property "${property.title || 'Property'}" has been approved. You can now post it by clicking "Post Now" in My Listings.`,
+                    created_at: new Date().toISOString()
+                  });
+              } catch (msgErr) {
+                console.warn("Could not create message either:", msgErr);
+              }
+            } else {
+              console.log("Notification created for user:", userId);
+            }
+          } catch (notifErr) {
+            console.warn("Error creating notification:", notifErr);
+          }
+        } else {
+          console.warn("Could not find user_id for property notification");
+        }
+      }
+
+      await fetchLeases();
+      setShowModalLocal(false);
+      alert(`Lease property status updated to ${newStatus} successfully!`);
+    } catch (error) {
+      console.error("Error updating status:", error);
+      alert("Error updating status: " + (error.message || "Unknown error"));
+    }
+  };
+
+  const handleEdit = (lease) => {
+    setShowModalLocal(false);
+    setEditingProperty(lease);
+    setShowModal(true);
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+        <button onClick={fetchLeases} style={{
+          padding: "12px 24px",
+          cursor: "pointer",
+          background: "linear-gradient(135deg, #3b82f6, #06b6d4)",
+          color: "#fff",
+          border: "none",
+          borderRadius: "8px",
+          fontSize: "1rem",
+          fontWeight: "600",
+          boxShadow: "0 4px 15px rgba(59, 130, 246, 0.4)",
+          transition: "all 0.3s"
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.transform = "translateY(-2px)";
+          e.target.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.6)";
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.transform = "translateY(0)";
+          e.target.style.boxShadow = "0 4px 15px rgba(59, 130, 246, 0.4)";
+        }}>🏢 Load Leases</button>
+        
+        {leases.length > 0 && (
+          <>
+            <span style={{
+              background: "rgba(59, 130, 246, 0.15)",
+              color: "#fff",
+              padding: "10px 20px",
+              borderRadius: "8px",
+              fontSize: "0.95rem",
+              fontWeight: "600",
+              border: "1px solid rgba(59, 130, 246, 0.3)"
+            }}>
+              Total: {leases.length} leases
+            </span>
+            
+            <div style={{ 
+              display: 'flex', 
+              background: 'rgba(59, 130, 246, 0.1)', 
+              padding: '6px', 
+              borderRadius: '10px', 
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              gap: '4px'
+            }}>
+              <button 
+                onClick={() => { setFilterStatus("all"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "all" ? "linear-gradient(135deg, #3b82f6, #06b6d4)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                All
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("pending"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "pending" ? "linear-gradient(135deg, #f59e0b, #d97706)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ⏳ Pending
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("accepted"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "accepted" ? "linear-gradient(135deg, #10b981, #059669)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ✅ Accepted
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("rejected"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "rejected" ? "linear-gradient(135deg, #ef4444, #dc2626)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ❌ Rejected
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <div style={{ marginTop: 20 }}>
+        {leases.length === 0 ? (
+          <div style={{
+            background: "rgba(59, 130, 246, 0.1)",
+            border: "2px dashed rgba(59, 130, 246, 0.3)",
+            borderRadius: "16px",
+            padding: "60px 40px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🏢</div>
+            <p style={{ 
+              color: "#fff", 
+              fontSize: "1.3rem", 
+              fontWeight: "600",
+              margin: "0 0 8px 0"
+            }}>No leases loaded</p>
+            <p style={{
+              color: "#a0aec0",
+              fontSize: "1rem",
+              margin: 0
+            }}>Click "Load Leases" button to fetch leases from database</p>
+          </div>
+        ) : filteredLeases.length === 0 ? (
+          <div style={{
+            background: "rgba(59, 130, 246, 0.1)",
+            border: "2px dashed rgba(59, 130, 246, 0.3)",
+            borderRadius: "16px",
+            padding: "60px 40px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🔍</div>
+            <p style={{ 
+              color: "#fff", 
+              fontSize: "1.3rem", 
+              fontWeight: "600",
+              margin: "0 0 8px 0"
+            }}>No leases found</p>
+            <p style={{
+              color: "#a0aec0",
+              fontSize: "1rem",
+              margin: 0
+            }}>No leases match the selected filter: {filterStatus}</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: 24, 
+              marginBottom: 20 
+            }}>
+              {displayedLeases.map((p) => {
+                const imageUrl = (p.image_urls && p.image_urls.length > 0) 
+                  ? p.image_urls[0] 
+                  : (p.photos && p.photos.length > 0) 
+                    ? p.photos[0] 
+                    : "https://via.placeholder.com/300x200?text=No+Image";
+                
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => { setSelectedLease(p); setShowModalLocal(true); }}
+                    style={{
+                      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+                      border: "2px solid #3b82f640",
+                      borderRadius: 16,
+                      cursor: "pointer",
+                      color: "#fff",
+                      transition: "all 0.3s",
+                      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                      overflow: "hidden"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = "0 20px 50px rgba(59, 130, 246, 0.6)";
+                      e.currentTarget.style.transform = "translateY(-8px)";
+                      e.currentTarget.style.borderColor = "#3b82f6";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.5)";
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.borderColor = "#3b82f640";
+                    }}
+                  >
+                    <div style={{
+                      width: "100%",
+                      height: "200px",
+                      overflow: "hidden",
+                      position: "relative"
+                    }}>
+                      <img 
+                        src={imageUrl} 
+                        alt={p.title} 
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover"
+                        }}
+                        onError={(e) => { e.target.src = "https://via.placeholder.com/300x200?text=No+Image"; }}
+                      />
+                      <div style={{
+                        position: "absolute",
+                        top: 12,
+                        right: 12,
+                        background: p.status === "accepted" ? "rgba(16, 185, 129, 0.9)" : 
+                                   p.status === "rejected" ? "rgba(239, 68, 68, 0.9)" : 
+                                   "rgba(245, 158, 11, 0.9)",
+                        color: "#fff",
+                        padding: "6px 12px",
+                        borderRadius: "8px",
+                        fontSize: "0.75rem",
+                        fontWeight: "700",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px"
+                      }}>
+                        {p.status || "pending"}
+                      </div>
+                    </div>
+                    <div style={{ padding: 20 }}>
+                      <h3 style={{ 
+                        margin: "0 0 12px 0", 
+                        color: "#fff", 
+                        fontSize: "1.3rem",
+                        fontWeight: "700",
+                        lineHeight: "1.3"
+                      }}>{p.title}</h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#3b82f6", fontSize: "1.1rem" }}>📍</span>
+                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.city}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#3b82f6", fontSize: "1.1rem" }}>🏢</span>
+                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.property_listing_type}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#3b82f6", fontSize: "1.1rem" }}>💰</span>
+                          <span style={{ color: "#fff", fontSize: "1rem", fontWeight: "700" }}>₹{p.price}</span>
+                        </div>
+                        {p.bedrooms && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ color: "#3b82f6", fontSize: "1.1rem" }}>🛏️</span>
+                            <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.bedrooms} Bedrooms</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{
+                        marginTop: 16,
+                        paddingTop: 16,
+                        borderTop: "1px solid rgba(59, 130, 246, 0.2)",
+                        color: "#3b82f6",
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                        textAlign: "center"
+                      }}>
+                        Click to view full details →
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 16,
+              marginTop: 32,
+              background: "rgba(59, 130, 246, 0.08)",
+              padding: "20px",
+              borderRadius: "12px"
+            }}>
+              <button
+                onClick={goToPreviousPage}
+                disabled={currentPage === 0}
+                style={{
+                  padding: "12px 24px",
+                  background: currentPage === 0 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #3b82f6, #06b6d4)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: currentPage === 0 ? "not-allowed" : "pointer",
+                  fontSize: "1rem",
+                  fontWeight: "700",
+                  transition: "all 0.3s",
+                  boxShadow: currentPage === 0 ? "none" : "0 4px 15px rgba(59, 130, 246, 0.4)"
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage > 0) {
+                    e.target.style.transform = "translateY(-2px)";
+                    e.target.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.6)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage > 0) {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 4px 15px rgba(59, 130, 246, 0.4)";
+                  }
+                }}
+              >
+                ← Previous
+              </button>
+              <span style={{ 
+                color: "#fff", 
+                fontSize: "1.1rem", 
+                fontWeight: "600",
+                background: "rgba(59, 130, 246, 0.15)",
+                padding: "10px 20px",
+                borderRadius: "8px",
+                border: "1px solid rgba(59, 130, 246, 0.3)"
+              }}>
+                Page {currentPage + 1} of {totalPages}
+              </span>
+              <button
+                onClick={goToNextPage}
+                disabled={currentPage === totalPages - 1}
+                style={{
+                  padding: "12px 24px",
+                  background: currentPage === totalPages - 1 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #3b82f6, #06b6d4)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: currentPage === totalPages - 1 ? "not-allowed" : "pointer",
+                  fontSize: "1rem",
+                  fontWeight: "700",
+                  transition: "all 0.3s",
+                  boxShadow: currentPage === totalPages - 1 ? "none" : "0 4px 15px rgba(59, 130, 246, 0.4)"
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage < totalPages - 1) {
+                    e.target.style.transform = "translateY(-2px)";
+                    e.target.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.6)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage < totalPages - 1) {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 4px 15px rgba(59, 130, 246, 0.4)";
+                  }
+                }}
+              >
+                Next →
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      
+      {showModalLocal && selectedLease && (
+        <LeaseDetailsModal
+          lease={selectedLease}
+          onClose={() => setShowModalLocal(false)}
+          onEdit={handleEdit}
+          onStatusChange={handleStatusChange}
+        />
+      )}
+    </div>
+  );
+}
+
+function LeaseDetailsModal({ lease, onClose, onEdit, onStatusChange }) {
+  const [rejectionReason, setRejectionReason] = React.useState(lease.rejection_reason || "");
+
+  const handleReject = async () => {
+    if (!rejectionReason.trim()) {
+      alert("Please provide a rejection reason");
+      return;
+    }
+    
+    try {
+      await supabase
+        .from("properties")
+        .update({ rejection_reason: rejectionReason })
+        .eq("id", lease.id);
+      
+      await onStatusChange(lease.id, "rejected");
+    } catch (error) {
+      console.error("Error updating rejection reason:", error);
+      alert("Error updating rejection reason");
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.85)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1000,
+      backdropFilter: "blur(5px)"
+    }}>
+      <div style={{
+        background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+        padding: 32,
+        borderRadius: 16,
+        maxWidth: "900px",
+        width: "90%",
+        maxHeight: "85vh",
+        overflowY: "auto",
+        color: "#fff",
+        border: "2px solid rgba(59, 130, 246, 0.3)",
+        boxShadow: "0 25px 80px rgba(0, 0, 0, 0.8)"
+      }}>
+        <h2 style={{
+          color: "#fff",
+          marginTop: 0,
+          fontSize: "2rem",
+          fontWeight: "bold",
+          background: "linear-gradient(135deg, #3b82f6, #06b6d4)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+          marginBottom: "24px"
+        }}>{lease.title}</h2>
+        
+        <div style={{ overflowX: "auto" }}>
+          <table style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            background: "rgba(59, 130, 246, 0.05)",
+            borderRadius: "8px"
+          }}>
+            <tbody>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600", width: "30%" }}>Type</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.type}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Area</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.area}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Bedrooms</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.bedrooms ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Bathrooms</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.bathrooms ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Parking</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.parking || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Furnished Status</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.furnished_status || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Balcony</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.balcony || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Nearby Places</td>
+                <td style={{ padding: "12px 16px", color: "#a0aec0" }}>{lease.nearby_places || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Description</td>
+                <td style={{ padding: "12px 16px", color: "#a0aec0" }}>{lease.description || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Address</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.address}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>City</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.city}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Price</td>
+                <td style={{ padding: "12px 16px", color: "#fff", fontSize: "1.2rem", fontWeight: "bold" }}>₹{lease.price}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Listing Type</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.property_listing_type}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Deposit</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.deposit ? `₹${lease.deposit}` : "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Min Duration</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.min_duration ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Contact Name</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.contact_name}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Contact Phone</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.contact_phone}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Contact Email</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{lease.contact_email}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600" }}>Status</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <span style={{
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    backgroundColor: lease.status === "accepted" ? "rgba(5, 150, 105, 0.2)" : lease.status === "rejected" ? "rgba(220, 38, 38, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                    color: lease.status === "accepted" ? "#10b981" : lease.status === "rejected" ? "#ef4444" : "#f59e0b",
+                    fontWeight: "600",
+                    border: `1px solid ${lease.status === "accepted" ? "#10b981" : lease.status === "rejected" ? "#ef4444" : "#f59e0b"}`
+                  }}>
+                    {lease.status || "pending"}
+                  </span>
+                </td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)", background: "rgba(59, 130, 246, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600", verticalAlign: "top" }}>Rejection Reason</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <textarea
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Enter rejection reason (required for rejection)"
+                    style={{
+                      width: "100%",
+                      minHeight: "80px",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "2px solid rgba(59, 130, 246, 0.3)",
+                      background: "rgba(26, 26, 46, 0.5)",
+                      color: "#fff",
+                      fontSize: "0.95rem",
+                      resize: "vertical",
+                      fontFamily: "inherit"
+                    }}
+                  />
+                </td>
+              </tr>
+              {lease.image_urls && lease.image_urls.length > 0 && (
+                <tr style={{ borderBottom: "1px solid rgba(59, 130, 246, 0.2)" }}>
+                  <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600", verticalAlign: "top" }}>Images</td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {lease.image_urls.map((src, i) => (
+                        <img key={i} src={src} alt={`img-${i}`} style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 8, border: "2px solid rgba(59, 130, 246, 0.3)" }} />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              <tr>
+                <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "600", verticalAlign: "top" }}>Actions</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => onEdit(lease)}
+                      style={{
+                        padding: "10px 20px",
+                        background: "linear-gradient(135deg, #667eea, #3b82f6)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: "0 4px 12px rgba(59, 130, 246, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.transform = "translateY(-2px)";
+                        e.target.style.boxShadow = "0 6px 16px rgba(59, 130, 246, 0.6)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = "0 4px 12px rgba(59, 130, 246, 0.4)";
+                      }}
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      onClick={() => onStatusChange(lease.id, "accepted")}
+                      disabled={lease.status === "accepted"}
+                      style={{
+                        padding: "10px 20px",
+                        backgroundColor: lease.status === "accepted" ? "#6b7280" : "#10b981",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: lease.status === "accepted" ? "not-allowed" : "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: lease.status === "accepted" ? "none" : "0 4px 12px rgba(16, 185, 129, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (lease.status !== "accepted") {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 16px rgba(16, 185, 129, 0.6)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = lease.status === "accepted" ? "none" : "0 4px 12px rgba(16, 185, 129, 0.4)";
+                      }}
+                    >
+                      ✓ Accept
+                    </button>
+                    <button
+                      onClick={handleReject}
+                      disabled={lease.status === "rejected"}
+                      style={{
+                        padding: "10px 20px",
+                        backgroundColor: lease.status === "rejected" ? "#6b7280" : "#ef4444",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: lease.status === "rejected" ? "not-allowed" : "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: lease.status === "rejected" ? "none" : "0 4px 12px rgba(239, 68, 68, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (lease.status !== "rejected") {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 16px rgba(239, 68, 68, 0.6)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = lease.status === "rejected" ? "none" : "0 4px 12px rgba(239, 68, 68, 0.4)";
+                      }}
+                    >
+                      ✗ Reject
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: "24px",
+            padding: "12px 32px",
+            cursor: "pointer",
+            background: "linear-gradient(135deg, #3b82f6, #06b6d4)",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "1rem",
+            fontWeight: "600",
+            width: "100%",
+            transition: "all 0.3s",
+            boxShadow: "0 4px 15px rgba(59, 130, 246, 0.4)"
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.transform = "translateY(-2px)";
+            e.target.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = "translateY(0)";
+            e.target.style.boxShadow = "0 4px 15px rgba(59, 130, 246, 0.4)";
+          }}
+        >Close</button>
+      </div>
+    </div>
+  );
+}
+
+function RentalsTab({ rentals, fetchRentals, updateStatus, setEditingProperty, setShowModal }) {
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const [selectedRental, setSelectedRental] = React.useState(null);
+  const [showModalLocal, setShowModalLocal] = React.useState(false);
+  const [filterStatus, setFilterStatus] = React.useState("all");
+  const rentalsPerPage = 8;
+  
+  const filteredRentals = filterStatus === "all" 
+    ? rentals 
+    : rentals.filter(p => p.status === filterStatus);
+  
+  const totalPages = Math.ceil(filteredRentals.length / rentalsPerPage);
+  const startIndex = currentPage * rentalsPerPage;
+  const displayedRentals = filteredRentals.slice(startIndex, startIndex + rentalsPerPage);
+  
+  const goToPreviousPage = () => {
+    setCurrentPage((prev) => Math.max(0, prev - 1));
+  };
+  
+  const goToNextPage = () => {
+    setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
+  };
+
+  const handleStatusChange = async (propertyId, newStatus) => {
+    try {
+      console.log("Updating status for rental property:", propertyId, "to:", newStatus);
+      
+      const { data: propertyData, error: fetchError } = await supabase
+        .from("properties")
+        .select("user_id, created_by, title, contact_email, contact_name")
+        .eq("id", propertyId)
+        .single();
+
+      if (fetchError) {
+        console.error("Error fetching property:", fetchError);
+      }
+
+      let property = propertyData;
+
+      const { data: updatedData, error } = await supabase
+        .from("properties")
+        .update({ status: newStatus })
+        .eq("id", propertyId)
+        .select();
+
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
+
+      if (!property && updatedData && updatedData.length > 0) {
+        property = updatedData[0];
+      }
+
+      console.log("Status updated successfully:", updatedData);
+
+      if (newStatus === "accepted" && property) {
+        let userId = property.user_id || property.created_by;
+        
+        if (!userId && property.contact_email) {
+          try {
+            const { data: userData } = await supabase
+              .from("profiles")
+              .select("id")
+              .eq("email", property.contact_email)
+              .single();
+            
+            if (userData) {
+              userId = userData.id;
+            } else {
+              const { data: authUsers } = await supabase.auth.admin.listUsers();
+              const foundUser = authUsers?.users?.find(u => u.email === property.contact_email);
+              if (foundUser) {
+                userId = foundUser.id;
+              }
+            }
+          } catch (err) {
+            console.warn("Could not find user by email:", err);
+          }
+        }
+        
+        if (userId) {
+          try {
+            const { error: notifError } = await supabase
+              .from("notifications")
+              .insert({
+                user_id: userId,
+                type: "property_approved",
+                title: "Property Approved!",
+                message: `Your property "${property.title || 'Property'}" has been approved. Click "Post Now" to upload documents and complete payment.`,
+                read: false,
+                created_at: new Date().toISOString()
+              });
+
+            if (notifError) {
+              console.warn("Could not create notification (table may not exist):", notifError);
+              try {
+                await supabase
+                  .from("messages")
+                  .insert({
+                    user_id: userId,
+                    subject: "Property Approved",
+                    message: `Your property "${property.title || 'Property'}" has been approved. You can now post it by clicking "Post Now" in My Listings.`,
+                    created_at: new Date().toISOString()
+                  });
+              } catch (msgErr) {
+                console.warn("Could not create message either:", msgErr);
+              }
+            } else {
+              console.log("Notification created for user:", userId);
+            }
+          } catch (notifErr) {
+            console.warn("Error creating notification:", notifErr);
+          }
+        } else {
+          console.warn("Could not find user_id for property notification");
+        }
+      }
+
+      await fetchRentals();
+      setShowModalLocal(false);
+      alert(`Rental property status updated to ${newStatus} successfully!`);
+    } catch (error) {
+      console.error("Error updating status:", error);
+      alert("Error updating status: " + (error.message || "Unknown error"));
+    }
+  };
+
+  const handleEdit = (rental) => {
+    setShowModalLocal(false);
+    setEditingProperty(rental);
+    setShowModal(true);
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+        <button onClick={fetchRentals} style={{
+          padding: "12px 24px",
+          cursor: "pointer",
+          background: "linear-gradient(135deg, #764ba2, #ec4899)",
+          color: "#fff",
+          border: "none",
+          borderRadius: "8px",
+          fontSize: "1rem",
+          fontWeight: "600",
+          boxShadow: "0 4px 15px rgba(118, 75, 162, 0.4)",
+          transition: "all 0.3s"
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.transform = "translateY(-2px)";
+          e.target.style.boxShadow = "0 6px 20px rgba(118, 75, 162, 0.6)";
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.transform = "translateY(0)";
+          e.target.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.4)";
+        }}>🏠 Load Rentals</button>
+        
+        {rentals.length > 0 && (
+          <>
+            <span style={{
+              background: "rgba(118, 75, 162, 0.15)",
+              color: "#fff",
+              padding: "10px 20px",
+              borderRadius: "8px",
+              fontSize: "0.95rem",
+              fontWeight: "600",
+              border: "1px solid rgba(118, 75, 162, 0.3)"
+            }}>
+              Total: {rentals.length} rentals
+            </span>
+            
+            <div style={{ 
+              display: 'flex', 
+              background: 'rgba(118, 75, 162, 0.1)', 
+              padding: '6px', 
+              borderRadius: '10px', 
+              border: '1px solid rgba(118, 75, 162, 0.3)',
+              gap: '4px'
+            }}>
+              <button 
+                onClick={() => { setFilterStatus("all"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "all" ? "linear-gradient(135deg, #764ba2, #ec4899)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                All
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("pending"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "pending" ? "linear-gradient(135deg, #f59e0b, #d97706)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ⏳ Pending
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("accepted"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "accepted" ? "linear-gradient(135deg, #10b981, #059669)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ✅ Accepted
+              </button>
+              <button 
+                onClick={() => { setFilterStatus("rejected"); setCurrentPage(0); }}
+                style={{ 
+                  padding: '8px 16px', 
+                  border: 'none', 
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  background: filterStatus === "rejected" ? "linear-gradient(135deg, #ef4444, #dc2626)" : "transparent",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  transition: "all 0.3s"
+                }}
+              >
+                ❌ Rejected
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <div style={{ marginTop: 20 }}>
+        {rentals.length === 0 ? (
+          <div style={{
+            background: "rgba(118, 75, 162, 0.1)",
+            border: "2px dashed rgba(118, 75, 162, 0.3)",
+            borderRadius: "16px",
+            padding: "60px 40px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🏠</div>
+            <p style={{ 
+              color: "#fff", 
+              fontSize: "1.3rem", 
+              fontWeight: "600",
+              margin: "0 0 8px 0"
+            }}>No rentals loaded</p>
+            <p style={{
+              color: "#a0aec0",
+              fontSize: "1rem",
+              margin: 0
+            }}>Click "Load Rentals" button to fetch rentals from database</p>
+          </div>
+        ) : filteredRentals.length === 0 ? (
+          <div style={{
+            background: "rgba(118, 75, 162, 0.1)",
+            border: "2px dashed rgba(118, 75, 162, 0.3)",
+            borderRadius: "16px",
+            padding: "60px 40px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🔍</div>
+            <p style={{ 
+              color: "#fff", 
+              fontSize: "1.3rem", 
+              fontWeight: "600",
+              margin: "0 0 8px 0"
+            }}>No rentals found</p>
+            <p style={{
+              color: "#a0aec0",
+              fontSize: "1rem",
+              margin: 0
+            }}>No rentals match the selected filter: {filterStatus}</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: 24, 
+              marginBottom: 20 
+            }}>
+              {displayedRentals.map((p) => {
+                const imageUrl = (p.image_urls && p.image_urls.length > 0) 
+                  ? p.image_urls[0] 
+                  : (p.photos && p.photos.length > 0) 
+                    ? p.photos[0] 
+                    : "https://via.placeholder.com/300x200?text=No+Image";
+                
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => { setSelectedRental(p); setShowModalLocal(true); }}
+                    style={{
+                      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+                      border: "2px solid #764ba240",
+                      borderRadius: 16,
+                      cursor: "pointer",
+                      color: "#fff",
+                      transition: "all 0.3s",
+                      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                      overflow: "hidden"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = "0 20px 50px rgba(118, 75, 162, 0.6)";
+                      e.currentTarget.style.transform = "translateY(-8px)";
+                      e.currentTarget.style.borderColor = "#764ba2";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.5)";
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.borderColor = "#764ba240";
+                    }}
+                  >
+                    <div style={{
+                      width: "100%",
+                      height: "200px",
+                      overflow: "hidden",
+                      position: "relative"
+                    }}>
+                      <img 
+                        src={imageUrl} 
+                        alt={p.title} 
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover"
+                        }}
+                        onError={(e) => { e.target.src = "https://via.placeholder.com/300x200?text=No+Image"; }}
+                      />
+                      <div style={{
+                        position: "absolute",
+                        top: 12,
+                        right: 12,
+                        background: p.status === "accepted" ? "rgba(16, 185, 129, 0.9)" : 
+                                   p.status === "rejected" ? "rgba(239, 68, 68, 0.9)" : 
+                                   "rgba(245, 158, 11, 0.9)",
+                        color: "#fff",
+                        padding: "6px 12px",
+                        borderRadius: "8px",
+                        fontSize: "0.75rem",
+                        fontWeight: "700",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px"
+                      }}>
+                        {p.status || "pending"}
+                      </div>
+                    </div>
+                    <div style={{ padding: 20 }}>
+                      <h3 style={{ 
+                        margin: "0 0 12px 0", 
+                        color: "#fff", 
+                        fontSize: "1.3rem",
+                        fontWeight: "700",
+                        lineHeight: "1.3"
+                      }}>{p.title}</h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#764ba2", fontSize: "1.1rem" }}>📍</span>
+                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.city}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#764ba2", fontSize: "1.1rem" }}>🏠</span>
+                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.property_listing_type}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#764ba2", fontSize: "1.1rem" }}>💰</span>
+                          <span style={{ color: "#fff", fontSize: "1rem", fontWeight: "700" }}>₹{p.price}</span>
+                        </div>
+                        {p.bedrooms && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ color: "#764ba2", fontSize: "1.1rem" }}>🛏️</span>
+                            <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.bedrooms} Bedrooms</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{
+                        marginTop: 16,
+                        paddingTop: 16,
+                        borderTop: "1px solid rgba(118, 75, 162, 0.2)",
+                        color: "#764ba2",
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                        textAlign: "center"
+                      }}>
+                        Click to view full details →
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 16,
+              marginTop: 32,
+              background: "rgba(118, 75, 162, 0.08)",
+              padding: "20px",
+              borderRadius: "12px"
+            }}>
+              <button
+                onClick={goToPreviousPage}
+                disabled={currentPage === 0}
+                style={{
+                  padding: "12px 24px",
+                  background: currentPage === 0 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #764ba2, #ec4899)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: currentPage === 0 ? "not-allowed" : "pointer",
+                  fontSize: "1rem",
+                  fontWeight: "700",
+                  transition: "all 0.3s",
+                  boxShadow: currentPage === 0 ? "none" : "0 4px 15px rgba(118, 75, 162, 0.4)"
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage > 0) {
+                    e.target.style.transform = "translateY(-2px)";
+                    e.target.style.boxShadow = "0 6px 20px rgba(118, 75, 162, 0.6)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage > 0) {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.4)";
+                  }
+                }}
+              >
+                ← Previous
+              </button>
+              <span style={{ 
+                color: "#fff", 
+                fontSize: "1.1rem", 
+                fontWeight: "600",
+                background: "rgba(118, 75, 162, 0.15)",
+                padding: "10px 20px",
+                borderRadius: "8px",
+                border: "1px solid rgba(118, 75, 162, 0.3)"
+              }}>
+                Page {currentPage + 1} of {totalPages}
+              </span>
+              <button
+                onClick={goToNextPage}
+                disabled={currentPage === totalPages - 1}
+                style={{
+                  padding: "12px 24px",
+                  background: currentPage === totalPages - 1 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #764ba2, #ec4899)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: currentPage === totalPages - 1 ? "not-allowed" : "pointer",
+                  fontSize: "1rem",
+                  fontWeight: "700",
+                  transition: "all 0.3s",
+                  boxShadow: currentPage === totalPages - 1 ? "none" : "0 4px 15px rgba(118, 75, 162, 0.4)"
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage < totalPages - 1) {
+                    e.target.style.transform = "translateY(-2px)";
+                    e.target.style.boxShadow = "0 6px 20px rgba(118, 75, 162, 0.6)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage < totalPages - 1) {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.4)";
+                  }
+                }}
+              >
+                Next →
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      
+      {showModalLocal && selectedRental && (
+        <RentalDetailsModal
+          rental={selectedRental}
+          onClose={() => setShowModalLocal(false)}
+          onEdit={handleEdit}
+          onStatusChange={handleStatusChange}
+        />
+      )}
+    </div>
+  );
+}
+
+function RentalDetailsModal({ rental, onClose, onEdit, onStatusChange }) {
+  const [rejectionReason, setRejectionReason] = React.useState(rental.rejection_reason || "");
+
+  const handleReject = async () => {
+    if (!rejectionReason.trim()) {
+      alert("Please provide a rejection reason");
+      return;
+    }
+    
+    try {
+      await supabase
+        .from("properties")
+        .update({ rejection_reason: rejectionReason })
+        .eq("id", rental.id);
+      
+      await onStatusChange(rental.id, "rejected");
+    } catch (error) {
+      console.error("Error updating rejection reason:", error);
+      alert("Error updating rejection reason");
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.85)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1000,
+      backdropFilter: "blur(5px)"
+    }}>
+      <div style={{
+        background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+        padding: 32,
+        borderRadius: 16,
+        maxWidth: "900px",
+        width: "90%",
+        maxHeight: "85vh",
+        overflowY: "auto",
+        color: "#fff",
+        border: "2px solid rgba(118, 75, 162, 0.3)",
+        boxShadow: "0 25px 80px rgba(0, 0, 0, 0.8)"
+      }}>
+        <h2 style={{
+          color: "#fff",
+          marginTop: 0,
+          fontSize: "2rem",
+          fontWeight: "bold",
+          background: "linear-gradient(135deg, #764ba2, #ec4899)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+          marginBottom: "24px"
+        }}>{rental.title}</h2>
+        
+        <div style={{ overflowX: "auto" }}>
+          <table style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            background: "rgba(118, 75, 162, 0.05)",
+            borderRadius: "8px"
+          }}>
+            <tbody>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600", width: "30%" }}>Type</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.type}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Area</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.area}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Bedrooms</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.bedrooms ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Bathrooms</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.bathrooms ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Parking</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.parking || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Furnished Status</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.furnished_status || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Balcony</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.balcony || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Nearby Places</td>
+                <td style={{ padding: "12px 16px", color: "#a0aec0" }}>{rental.nearby_places || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Description</td>
+                <td style={{ padding: "12px 16px", color: "#a0aec0" }}>{rental.description || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Address</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.address}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>City</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.city}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Price</td>
+                <td style={{ padding: "12px 16px", color: "#fff", fontSize: "1.2rem", fontWeight: "bold" }}>₹{rental.price}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Listing Type</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.property_listing_type}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Deposit</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.deposit ? `₹${rental.deposit}` : "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Min Duration</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.min_duration ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Contact Name</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.contact_name}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Contact Phone</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.contact_phone}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Contact Email</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{rental.contact_email}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600" }}>Status</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <span style={{
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    backgroundColor: rental.status === "accepted" ? "rgba(5, 150, 105, 0.2)" : rental.status === "rejected" ? "rgba(220, 38, 38, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                    color: rental.status === "accepted" ? "#10b981" : rental.status === "rejected" ? "#ef4444" : "#f59e0b",
+                    fontWeight: "600",
+                    border: `1px solid ${rental.status === "accepted" ? "#10b981" : rental.status === "rejected" ? "#ef4444" : "#f59e0b"}`
+                  }}>
+                    {rental.status || "pending"}
+                  </span>
+                </td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)", background: "rgba(118, 75, 162, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600", verticalAlign: "top" }}>Rejection Reason</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <textarea
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Enter rejection reason (required for rejection)"
+                    style={{
+                      width: "100%",
+                      minHeight: "80px",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "2px solid rgba(118, 75, 162, 0.3)",
+                      background: "rgba(26, 26, 46, 0.5)",
+                      color: "#fff",
+                      fontSize: "0.95rem",
+                      resize: "vertical",
+                      fontFamily: "inherit"
+                    }}
+                  />
+                </td>
+              </tr>
+              {rental.image_urls && rental.image_urls.length > 0 && (
+                <tr style={{ borderBottom: "1px solid rgba(118, 75, 162, 0.2)" }}>
+                  <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600", verticalAlign: "top" }}>Images</td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {rental.image_urls.map((src, i) => (
+                        <img key={i} src={src} alt={`img-${i}`} style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 8, border: "2px solid rgba(118, 75, 162, 0.3)" }} />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              <tr>
+                <td style={{ padding: "12px 16px", color: "#764ba2", fontWeight: "600", verticalAlign: "top" }}>Actions</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => onEdit(rental)}
+                      style={{
+                        padding: "10px 20px",
+                        background: "linear-gradient(135deg, #667eea, #764ba2)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: "0 4px 12px rgba(118, 75, 162, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.transform = "translateY(-2px)";
+                        e.target.style.boxShadow = "0 6px 16px rgba(118, 75, 162, 0.6)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = "0 4px 12px rgba(118, 75, 162, 0.4)";
+                      }}
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      onClick={() => onStatusChange(rental.id, "accepted")}
+                      disabled={rental.status === "accepted"}
+                      style={{
+                        padding: "10px 20px",
+                        backgroundColor: rental.status === "accepted" ? "#6b7280" : "#10b981",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: rental.status === "accepted" ? "not-allowed" : "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: rental.status === "accepted" ? "none" : "0 4px 12px rgba(16, 185, 129, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (rental.status !== "accepted") {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 16px rgba(16, 185, 129, 0.6)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = rental.status === "accepted" ? "none" : "0 4px 12px rgba(16, 185, 129, 0.4)";
+                      }}
+                    >
+                      ✓ Accept
+                    </button>
+                    <button
+                      onClick={handleReject}
+                      disabled={rental.status === "rejected"}
+                      style={{
+                        padding: "10px 20px",
+                        backgroundColor: rental.status === "rejected" ? "#6b7280" : "#ef4444",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: rental.status === "rejected" ? "not-allowed" : "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: rental.status === "rejected" ? "none" : "0 4px 12px rgba(239, 68, 68, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (rental.status !== "rejected") {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 16px rgba(239, 68, 68, 0.6)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = rental.status === "rejected" ? "none" : "0 4px 12px rgba(239, 68, 68, 0.4)";
+                      }}
+                    >
+                      ✗ Reject
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: "24px",
+            padding: "12px 32px",
+            cursor: "pointer",
+            background: "linear-gradient(135deg, #764ba2, #ec4899)",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "1rem",
+            fontWeight: "600",
+            width: "100%",
+            transition: "all 0.3s",
+            boxShadow: "0 4px 15px rgba(118, 75, 162, 0.4)"
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.transform = "translateY(-2px)";
+            e.target.style.boxShadow = "0 6px 20px rgba(118, 75, 162, 0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = "translateY(0)";
+            e.target.style.boxShadow = "0 4px 15px rgba(118, 75, 162, 0.4)";
+          }}
+        >Close</button>
       </div>
     </div>
   );
@@ -860,7 +4185,27 @@ function ListingTab({ title, data, fetchData, updateStatus, loading, setEditingP
 
   return (
     <div>
-      <button onClick={fetchData} style={{ padding: "10px 20px", marginBottom: "20px", cursor: "pointer" }}>
+      <button onClick={fetchData} style={{
+        padding: "12px 24px",
+        marginBottom: "24px",
+        cursor: "pointer",
+        background: "linear-gradient(135deg, #667eea, #764ba2)",
+        color: "#fff",
+        border: "none",
+        borderRadius: "8px",
+        fontSize: "1rem",
+        fontWeight: "600",
+        boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
+        transition: "all 0.3s"
+      }}
+      onMouseEnter={(e) => {
+        e.target.style.transform = "translateY(-2px)";
+        e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+      }}
+      onMouseLeave={(e) => {
+        e.target.style.transform = "translateY(0)";
+        e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+      }}>
         {loading ? "Loading..." : `Load ${title}`}
       </button>
 
@@ -1047,13 +4392,15 @@ function ListingTab({ title, data, fetchData, updateStatus, loading, setEditingP
   );
 }
 
-function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError }) {
+function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError, appointmentsCount }) {
   const [currentPage, setCurrentPage] = React.useState(0);
-  const [filter, setFilter] = React.useState("all"); // "all" or "accepted"
-  const itemsPerPage = 3;
+  const [filter, setFilter] = React.useState("all"); // "all", "confirmed", or "pending"
+  const itemsPerPage = 8;
   
-  const filteredAppointments = filter === "accepted" 
+  const filteredAppointments = filter === "confirmed" 
     ? appointments.filter(apt => apt.status === "confirmed" || apt.status === "accepted")
+    : filter === "pending"
+    ? appointments.filter(apt => apt.status === "pending")
     : appointments;
 
   const totalPages = Math.ceil(filteredAppointments.length / itemsPerPage);
@@ -1195,71 +4542,140 @@ function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError 
   return (
     <div>
       <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button onClick={fetchAppointments} style={{ padding: "10px 20px", cursor: "pointer", backgroundColor: "#1e40af", color: "#fff", border: "none", borderRadius: "6px" }}>
-          {loading ? "Loading..." : "🔄 Refresh"}
+        <button onClick={() => { setCurrentPage(0); fetchAppointments(); }} style={{
+          padding: "12px 24px",
+          cursor: "pointer",
+          background: "linear-gradient(135deg, #667eea, #764ba2)",
+          color: "#fff",
+          border: "none",
+          borderRadius: "8px",
+          fontSize: "1rem",
+          fontWeight: "600",
+          boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
+          transition: "all 0.3s"
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.transform = "translateY(-2px)";
+          e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.transform = "translateY(0)";
+          e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+        }}>
+          {loading ? "Loading..." : `  Load Appointments (${appointmentsCount})`}
         </button>
         
-        <div style={{ display: 'flex', background: '#fff', padding: '4px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+        <span style={{
+          background: "rgba(102, 126, 234, 0.15)",
+          color: "#fff",
+          padding: "10px 20px",
+          borderRadius: "8px",
+          fontSize: "0.95rem",
+          fontWeight: "600",
+          border: "1px solid rgba(102, 126, 234, 0.3)"
+        }}>
+          Total: {appointments.length} bookings
+        </span>
+        
+        <div style={{ 
+          display: 'flex', 
+          background: 'rgba(102, 126, 234, 0.1)', 
+          padding: '6px', 
+          borderRadius: '10px', 
+          border: '1px solid rgba(102, 126, 234, 0.3)',
+          gap: '4px'
+        }}>
           <button 
             onClick={() => { setFilter("all"); setCurrentPage(0); }}
             style={{ 
-              padding: '6px 12px', 
+              padding: '8px 16px', 
               border: 'none', 
-              borderRadius: '6px',
+              borderRadius: '8px',
               cursor: 'pointer',
-              background: filter === "all" ? "#ff6b35" : "transparent",
-              color: filter === "all" ? "#fff" : "#64748b",
-              fontWeight: "500"
+              background: filter === "all" ? "linear-gradient(135deg, #667eea, #764ba2)" : "transparent",
+              color: "#fff",
+              fontWeight: "600",
+              fontSize: "0.9rem",
+              transition: "all 0.3s"
             }}
           >
-            All Bookings
+            All
           </button>
           <button 
-            onClick={() => { setFilter("accepted"); setCurrentPage(0); }}
+            onClick={() => { setFilter("pending"); setCurrentPage(0); }}
             style={{ 
-              padding: '6px 12px', 
+              padding: '8px 16px', 
               border: 'none', 
-              borderRadius: '6px',
+              borderRadius: '8px',
               cursor: 'pointer',
-              background: filter === "accepted" ? "#059669" : "transparent",
-              color: filter === "accepted" ? "#fff" : "#64748b",
-              fontWeight: "500"
+              background: filter === "pending" ? "linear-gradient(135deg, #f59e0b, #d97706)" : "transparent",
+              color: "#fff",
+              fontWeight: "600",
+              fontSize: "0.9rem",
+              transition: "all 0.3s"
             }}
           >
-            ✅ Accepted Only
+            ⏳ Pending
+          </button>
+          <button 
+            onClick={() => { setFilter("confirmed"); setCurrentPage(0); }}
+            style={{ 
+              padding: '8px 16px', 
+              border: 'none', 
+              borderRadius: '8px',
+              cursor: 'pointer',
+              background: filter === "confirmed" ? "linear-gradient(135deg, #10b981, #059669)" : "transparent",
+              color: "#fff",
+              fontWeight: "600",
+              fontSize: "0.9rem",
+              transition: "all 0.3s"
+            }}
+          >
+            ✅ Confirmed
           </button>
         </div>
 
         {fetchError && (
-          <span style={{ color: '#dc2626', fontSize: '0.9rem', fontWeight: '500' }}>
+          <span style={{ color: '#ef4444', fontSize: '0.9rem', fontWeight: '500' }}>
             ⚠️ {fetchError}
           </span>
         )}
       </div>
 
       {filteredAppointments.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-          <p style={{ color: fetchError ? '#dc2626' : '#6b7280', margin: 0, fontWeight: fetchError ? '500' : 'normal' }}>
-            {loading 
-              ? "Checking for appointments..." 
-              : fetchError 
-                ? `Error: ${fetchError}` 
-                : filter === "accepted" 
-                  ? "No accepted appointments found." 
-                  : "No appointments found."
-            }
+        <div style={{
+          background: "rgba(102, 126, 234, 0.1)",
+          border: "2px dashed rgba(102, 126, 234, 0.3)",
+          borderRadius: "16px",
+          padding: "60px 40px",
+          textAlign: "center"
+        }}>
+          <div style={{ fontSize: "4rem", marginBottom: "16px" }}>📅</div>
+          <p style={{ 
+            color: "#fff", 
+            fontSize: "1.3rem", 
+            fontWeight: "600",
+            margin: "0 0 8px 0"
+          }}>
+            {loading ? "Loading appointments..." : fetchError ? `Error: ${fetchError}` : filter === "pending" ? "No pending appointments" : filter === "confirmed" ? "No confirmed appointments" : "No appointments found"}
           </p>
+          <p style={{
+            color: "#a0aec0",
+            fontSize: "1rem",
+            margin: 0
+          }}>Click "Load Appointments" button to fetch bookings from database</p>
           {fetchError && (
             <button 
               onClick={fetchAppointments} 
               style={{ 
                 marginTop: '15px', 
                 padding: '8px 16px', 
-                backgroundColor: '#1e40af', 
+                backgroundColor: '#667eea', 
                 color: '#fff', 
                 border: 'none', 
                 borderRadius: '4px', 
-                cursor: 'pointer' 
+                cursor: 'pointer',
+                fontWeight: '600'
               }}
             >
               Retry
@@ -1268,165 +4684,181 @@ function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError 
         </div>
       ) : (
         <>
-          <div style={{ overflowX: "auto", marginTop: 12, marginBottom: 20 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", color: "#000" }}>
-              <thead>
-                <tr>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Image</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Property Title</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Location</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>User Name</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>User Email</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Mobile Number</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Message</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Rejection Reason</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Cancel Reason</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Date</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Time</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Status</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Booked On</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedAppointments.map((apt) => {
-                  const appointmentDateStr = apt.appointment_date && apt.appointment_time 
-                    ? `${apt.appointment_date}T${apt.appointment_time}`
-                    : apt.appointment_date;
-                  const appointmentDate = appointmentDateStr ? new Date(appointmentDateStr) : null;
-                  const proposedDates = apt.proposed_dates || [];
-                  
-                  // Use local properties from appointment data if relation fetch fails
-                  const propertyTitle = apt.property_title || "N/A";
-                  const propertyImage = apt.property_image || "https://via.placeholder.com/60?text=No+Img";
-                  
-                  return (
-                    <tr key={apt.id}>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
-                        <img 
-                          src={propertyImage} 
-                          alt="Prop" 
-                          style={{ width: "60px", height: "60px", objectFit: "cover", borderRadius: "4px" }}
-                          onError={(e) => { e.target.onerror = null; e.target.src = "https://via.placeholder.com/60?text=Error"; }}
-                        />
-                      </td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{propertyTitle}</td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{apt.property_location || "N/A"}</td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{apt.user_name || "N/A"}</td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{apt.user_email || "N/A"}</td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{apt.mobile_number || "N/A"}</td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={apt.message}>
-                        {apt.message || "-"}
-                      </td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={apt.rejection_reason}>
-                        {apt.rejection_reason || "-"}
-                      </td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={apt.cancellation_reason}>
-                        {apt.cancellation_reason || "-"}
-                      </td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
-                        {proposedDates.length > 0 ? (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            {proposedDates.map((pd, idx) => (
-                              <div key={idx} style={{ 
-                                fontSize: "0.8rem", 
-                                padding: "4px", 
-                                backgroundColor: apt.appointment_date === pd.date && apt.appointment_time === pd.time ? "#d1fae5" : "#f3f4f6",
-                                borderRadius: "4px",
-                                border: apt.appointment_date === pd.date && apt.appointment_time === pd.time ? "1px solid #059669" : "1px solid #e5e7eb"
-                              }}>
-                                {new Date(pd.date).toLocaleDateString()}{pd.time && pd.time !== '00:00:00' ? ` @ ${pd.time}` : " (Date Only)"}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          appointmentDate ? appointmentDate.toLocaleDateString() : "N/A"
-                        )}
-                      </td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
-                          {appointmentDate && apt.appointment_time && apt.appointment_time !== '00:00:00' 
-                            ? appointmentDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) 
-                            : "Date Only"}
-                        </td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
-                        <span style={{
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          backgroundColor: apt.status === "confirmed" || apt.status === "accepted" ? "#d1fae5" : 
-                                          apt.status === "cancelled" || apt.status === "rejected" ? "#fee2e2" : "#fef3c7",
-                          color: apt.status === "confirmed" || apt.status === "accepted" ? "#065f46" : 
-                                 apt.status === "cancelled" || apt.status === "rejected" ? "#991b1b" : "#92400e",
-                          fontWeight: "500"
-                        }}>
-                          {apt.status || "pending"}
-                        </span>
-                      </td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
-                        {new Date(apt.created_at).toLocaleString()}
-                      </td>
-                      <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
-                        <div style={{ display: "flex", gap: "5px", flexDirection: "column" }}>
-                          {proposedDates.length > 0 && apt.status === "pending" ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                              <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "#6b7280" }}>Select a confirmed date:</div>
-                              {proposedDates.map((pd, idx) => (
-                                <button
-                                  key={idx}
-                                  onClick={() => updateAppointmentStatus(apt.id, "confirmed", pd)}
-                                  style={{
-                                    padding: "6px 12px",
-                                    backgroundColor: "#059669",
-                                    color: "#fff",
-                                    border: "none",
-                                    borderRadius: "4px",
-                                    cursor: "pointer",
-                                    fontSize: "0.75rem",
-                                    textAlign: "left"
-                                  }}
-                                >
-                                  ✓ Accept {new Date(pd.date).toLocaleDateString()}
-                                </button>
-                              ))}
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => updateAppointmentStatus(apt.id, "confirmed")}
-                              disabled={apt.status === "confirmed" || apt.status === "accepted"}
-                              style={{
-                                padding: "6px 12px",
-                                backgroundColor: (apt.status === "confirmed" || apt.status === "accepted") ? "#9ca3af" : "#059669",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                cursor: (apt.status === "confirmed" || apt.status === "accepted") ? "not-allowed" : "pointer",
-                                fontSize: "0.85rem"
-                              }}
-                            >
-                              ✓ Accept Current
-                            </button>
-                          )}
-                          <button
-                            onClick={() => updateAppointmentStatus(apt.id, "rejected")}
-                            disabled={apt.status === "rejected" || apt.status === "cancelled"}
-                            style={{
-                              padding: "6px 12px",
-                              backgroundColor: (apt.status === "rejected" || apt.status === "cancelled") ? "#9ca3af" : "#dc2626",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: "4px",
-                              cursor: (apt.status === "rejected" || apt.status === "cancelled") ? "not-allowed" : "pointer",
-                              fontSize: "0.85rem"
-                            }}
-                          >
-                            ✗ Reject
-                          </button>
+          <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: 24, 
+            marginBottom: 20 
+          }}>
+            {displayedAppointments.map((apt) => {
+              const propertyImage = apt.property_image || "https://via.placeholder.com/300x200?text=No+Image";
+              
+              return (
+                <div
+                  key={apt.id}
+                  style={{
+                    background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+                    border: "2px solid #667eea40",
+                    borderRadius: 16,
+                    cursor: "pointer",
+                    color: "#fff",
+                    transition: "all 0.3s",
+                    boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                    overflow: "hidden"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = "0 20px 50px rgba(102, 126, 234, 0.6)";
+                    e.currentTarget.style.transform = "translateY(-8px)";
+                    e.currentTarget.style.borderColor = "#667eea";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.5)";
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.borderColor = "#667eea40";
+                  }}
+                >
+                  <div style={{
+                    width: "100%",
+                    height: "200px",
+                    overflow: "hidden",
+                    position: "relative"
+                  }}>
+                    <img 
+                      src={propertyImage} 
+                      alt={apt.property_title} 
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover"
+                      }}
+                      onError={(e) => { e.target.src = "https://via.placeholder.com/300x200?text=No+Image"; }}
+                    />
+                    <div style={{
+                      position: "absolute",
+                      top: 12,
+                      right: 12,
+                      background: apt.status === "confirmed" || apt.status === "accepted" ? "rgba(16, 185, 129, 0.9)" : 
+                                 apt.status === "cancelled" || apt.status === "rejected" ? "rgba(239, 68, 68, 0.9)" : 
+                                 "rgba(245, 158, 11, 0.9)",
+                      color: "#fff",
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      fontSize: "0.75rem",
+                      fontWeight: "700",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px"
+                    }}>
+                      {apt.status || "pending"}
+                    </div>
+                  </div>
+                  <div style={{ padding: 20 }}>
+                    <h3 style={{ 
+                      margin: "0 0 12px 0", 
+                      color: "#fff", 
+                      fontSize: "1.3rem",
+                      fontWeight: "700",
+                      lineHeight: "1.3"
+                    }}>{apt.property_title || "Property"}</h3>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ color: "#667eea", fontSize: "1.1rem" }}>📍</span>
+                        <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{apt.property_location || apt.city || "Location N/A"}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ color: "#667eea", fontSize: "1.1rem" }}>👤</span>
+                        <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{apt.user_name || "N/A"}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ color: "#667eea", fontSize: "1.1rem" }}>📧</span>
+                        <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{apt.user_email || "N/A"}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ color: "#667eea", fontSize: "1.1rem" }}>📱</span>
+                        <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{apt.mobile_number || "N/A"}</span>
+                      </div>
+                      {apt.appointment_date && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#667eea", fontSize: "1.1rem" }}>📅</span>
+                          <span style={{ color: "#fff", fontSize: "0.9rem", fontWeight: "600" }}>
+                            {new Date(apt.appointment_date).toLocaleDateString()}
+                            {apt.appointment_time && apt.appointment_time !== '00:00:00' ? ` @ ${apt.appointment_time}` : ""}
+                          </span>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      )}
+                      {apt.message && (
+                        <div style={{ marginTop: 8, padding: "8px", backgroundColor: "rgba(102, 126, 234, 0.1)", borderRadius: "8px", borderLeft: "3px solid #667eea" }}>
+                          <p style={{ margin: 0, color: "#a0aec0", fontSize: "0.8rem" }}>💬 {apt.message}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{
+                      marginTop: 16,
+                      paddingTop: 16,
+                      borderTop: "1px solid rgba(102, 126, 234, 0.2)",
+                      display: "flex",
+                      gap: 8
+                    }}>
+                      <button
+                        onClick={() => updateAppointmentStatus(apt.id, "confirmed")}
+                        disabled={apt.status === "confirmed" || apt.status === "accepted"}
+                        style={{
+                          flex: 1,
+                          padding: "8px 12px",
+                          backgroundColor: (apt.status === "confirmed" || apt.status === "accepted") ? "#4b5563" : "#10b981",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "6px",
+                          cursor: (apt.status === "confirmed" || apt.status === "accepted") ? "not-allowed" : "pointer",
+                          fontSize: "0.85rem",
+                          fontWeight: "600",
+                          transition: "all 0.3s"
+                        }}
+                        onMouseEnter={(e) => {
+                          if (apt.status !== "confirmed" && apt.status !== "accepted") {
+                            e.target.style.backgroundColor = "#059669";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (apt.status !== "confirmed" && apt.status !== "accepted") {
+                            e.target.style.backgroundColor = "#10b981";
+                          }
+                        }}
+                      >
+                        ✓ Accept
+                      </button>
+                      <button
+                        onClick={() => updateAppointmentStatus(apt.id, "rejected")}
+                        disabled={apt.status === "rejected" || apt.status === "cancelled"}
+                        style={{
+                          flex: 1,
+                          padding: "8px 12px",
+                          backgroundColor: (apt.status === "rejected" || apt.status === "cancelled") ? "#4b5563" : "#ef4444",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "6px",
+                          cursor: (apt.status === "rejected" || apt.status === "cancelled") ? "not-allowed" : "pointer",
+                          fontSize: "0.85rem",
+                          fontWeight: "600",
+                          transition: "all 0.3s"
+                        }}
+                        onMouseEnter={(e) => {
+                          if (apt.status !== "rejected" && apt.status !== "cancelled") {
+                            e.target.style.backgroundColor = "#dc2626";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (apt.status !== "rejected" && apt.status !== "cancelled") {
+                            e.target.style.backgroundColor = "#ef4444";
+                          }
+                        }}
+                      >
+                        ✗ Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div style={{
@@ -1434,39 +4866,78 @@ function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError 
             justifyContent: "center",
             alignItems: "center",
             gap: 16,
-            marginTop: 20
+            marginTop: 32,
+            background: "rgba(102, 126, 234, 0.08)",
+            padding: "20px",
+            borderRadius: "12px"
           }}>
             <button
               onClick={goToPreviousPage}
               disabled={currentPage === 0}
               style={{
-                padding: "10px 16px",
-                backgroundColor: currentPage === 0 ? "#d1d5db" : "#1e40af",
+                padding: "12px 24px",
+                background: currentPage === 0 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #667eea, #764ba2)",
                 color: "#fff",
                 border: "none",
-                borderRadius: 6,
+                borderRadius: 8,
                 cursor: currentPage === 0 ? "not-allowed" : "pointer",
-                fontSize: "1.2rem",
-                fontWeight: "bold"
+                fontSize: "1rem",
+                fontWeight: "700",
+                transition: "all 0.3s",
+                boxShadow: currentPage === 0 ? "none" : "0 4px 15px rgba(102, 126, 234, 0.4)"
+              }}
+              onMouseEnter={(e) => {
+                if (currentPage > 0) {
+                  e.target.style.transform = "translateY(-2px)";
+                  e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (currentPage > 0) {
+                  e.target.style.transform = "translateY(0)";
+                  e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+                }
               }}
             >
               ← Previous
             </button>
-            <span style={{ color: "#000", fontSize: "1rem", fontWeight: "500" }}>
+            <span style={{ 
+              color: "#fff", 
+              fontSize: "1.1rem", 
+              fontWeight: "600",
+              background: "rgba(102, 126, 234, 0.15)",
+              padding: "10px 20px",
+              borderRadius: "8px",
+              border: "1px solid rgba(102, 126, 234, 0.3)"
+            }}>
               Page {currentPage + 1} of {totalPages}
             </span>
             <button
               onClick={goToNextPage}
               disabled={currentPage === totalPages - 1}
               style={{
-                padding: "10px 16px",
-                backgroundColor: currentPage === totalPages - 1 ? "#d1d5db" : "#1e40af",
+                padding: "12px 24px",
+                background: currentPage === totalPages - 1 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #667eea, #764ba2)",
                 color: "#fff",
                 border: "none",
-                borderRadius: 6,
+                borderRadius: 8,
                 cursor: currentPage === totalPages - 1 ? "not-allowed" : "pointer",
-                fontSize: "1.2rem",
-                fontWeight: "bold"
+                fontSize: "1rem",
+                fontWeight: "700",
+                transition: "all 0.3s",
+                boxShadow: currentPage === totalPages - 1 ? "none" : "0 4px 15px rgba(102, 126, 234, 0.4)"
+              }}
+              onMouseEnter={(e) => {
+                if (currentPage < totalPages - 1) {
+                  e.target.style.transform = "translateY(-2px)";
+                  e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (currentPage < totalPages - 1) {
+                  e.target.style.transform = "translateY(0)";
+                  e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+                }
               }}
             >
               Next →
@@ -1495,53 +4966,117 @@ function FeedbackTab({ feedback, fetchFeedback, deleteFeedback, loading }) {
   };
 
   return (
-    <div>
-      <button onClick={fetchFeedback} style={{ padding: "10px 20px", marginBottom: "20px", cursor: "pointer" }}>
-        {loading ? "Loading..." : "Load Feedback"}
+    <div style={{
+      background: "#000000",
+      borderRadius: "16px",
+      padding: "30px",
+      boxShadow: "0 10px 40px rgba(0, 0, 0, 0.5)",
+      minHeight: "400px"
+    }}>
+      <button onClick={fetchFeedback} style={{
+        padding: "14px 28px",
+        marginBottom: "24px",
+        cursor: "pointer",
+        background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)",
+        color: "#fff",
+        border: "none",
+        borderRadius: "12px",
+        fontSize: "1.1rem",
+        fontWeight: "700",
+        boxShadow: "0 8px 20px rgba(168, 85, 247, 0.5)",
+        transition: "all 0.3s",
+        letterSpacing: "0.5px"
+      }}
+      onMouseEnter={(e) => {
+        e.target.style.transform = "translateY(-3px) scale(1.05)";
+        e.target.style.boxShadow = "0 12px 30px rgba(236, 72, 153, 0.7)";
+        e.target.style.background = "linear-gradient(135deg, #ec4899 0%, #a855f7 100%)";
+      }}
+      onMouseLeave={(e) => {
+        e.target.style.transform = "translateY(0) scale(1)";
+        e.target.style.boxShadow = "0 8px 20px rgba(168, 85, 247, 0.5)";
+        e.target.style.background = "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)";
+      }}>
+        {loading ? "⏳ Loading..." : "💬 Load Feedback"}
       </button>
 
       {feedback.length === 0 ? (
-        <p style={{ marginTop: 12 }}>No feedback found.</p>
+        <div style={{
+          background: "rgba(55, 65, 81, 0.6)",
+          backdropFilter: "blur(10px)",
+          borderRadius: "12px",
+          padding: "40px",
+          textAlign: "center",
+          boxShadow: "0 8px 20px rgba(0, 0, 0, 0.3)",
+          border: "1px solid rgba(107, 114, 128, 0.3)"
+        }}>
+          <p style={{ 
+            marginTop: 0, 
+            fontSize: "1.1rem", 
+            color: "#d1d5db",
+            fontWeight: "500"
+          }}>No feedback found.</p>
+        </div>
       ) : (
         <>
-          <div style={{ overflowX: "auto", marginTop: 12, marginBottom: 20 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", color: "#000" }}>
+          <div style={{ 
+            overflowX: "auto", 
+            marginTop: 12, 
+            marginBottom: 20,
+            borderRadius: "12px",
+            boxShadow: "0 8px 20px rgba(0, 0, 0, 0.3)",
+            background: "rgba(31, 41, 55, 0.6)",
+            backdropFilter: "blur(10px)",
+            border: "1px solid rgba(107, 114, 128, 0.3)"
+          }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", background: "transparent", color: "#e5e7eb" }}>
               <thead>
-                <tr>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Date</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Name</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Rating</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Message</th>
-                  <th style={{ border: "1px solid #e5e7eb", padding: 8 }}>Actions</th>
+                <tr style={{ background: "rgba(55, 65, 81, 0.4)", borderBottom: "2px solid #a855f7" }}>
+                  <th style={{ border: "1px solid #4b5563", padding: 12, color: "#a855f7", fontWeight: "700", textAlign: "left" }}>Date</th>
+                  <th style={{ border: "1px solid #4b5563", padding: 12, color: "#a855f7", fontWeight: "700", textAlign: "left" }}>Name</th>
+                  <th style={{ border: "1px solid #4b5563", padding: 12, color: "#a855f7", fontWeight: "700", textAlign: "left" }}>Rating</th>
+                  <th style={{ border: "1px solid #4b5563", padding: 12, color: "#a855f7", fontWeight: "700", textAlign: "left" }}>Message</th>
+                  <th style={{ border: "1px solid #4b5563", padding: 12, color: "#a855f7", fontWeight: "700", textAlign: "left" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {displayedFeedback.map((item) => (
-                  <tr key={item.id}>
-                    <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
+                {displayedFeedback.map((item, idx) => (
+                  <tr key={item.id} style={{ background: idx % 2 === 0 ? "rgba(55, 65, 81, 0.2)" : "rgba(31, 41, 55, 0.3)", borderBottom: "1px solid #4b5563" }}>
+                    <td style={{ border: "1px solid #4b5563", padding: 12, color: "#e5e7eb" }}>
                       {new Date(item.created_at).toLocaleDateString()}
                     </td>
-                    <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>{item.name}</td>
-                    <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
-                      <span style={{ color: "#f59e0b", fontWeight: "bold" }}>
+                    <td style={{ border: "1px solid #4b5563", padding: 12, color: "#e5e7eb" }}>{item.name}</td>
+                    <td style={{ border: "1px solid #4b5563", padding: 12 }}>
+                      <span style={{ color: "#ec4899", fontWeight: "bold", fontSize: "1.1rem" }}>
                         {"★".repeat(item.rating)}
-                        <span style={{ color: "#d1d5db" }}>{"★".repeat(5 - item.rating)}</span>
+                        <span style={{ color: "#6b7280" }}>{"★".repeat(5 - item.rating)}</span>
                       </span>
                     </td>
-                    <td style={{ border: "1px solid #e5e7eb", padding: 8, maxWidth: "400px" }}>
+                    <td style={{ border: "1px solid #4b5563", padding: 12, maxWidth: "400px", color: "#d1d5db" }}>
                       {item.message}
                     </td>
-                    <td style={{ border: "1px solid #e5e7eb", padding: 8 }}>
+                    <td style={{ border: "1px solid #4b5563", padding: 12 }}>
                       <button
                         onClick={() => deleteFeedback(item.id)}
                         style={{
-                          padding: "6px 12px",
-                          backgroundColor: "#dc2626",
+                          padding: "8px 16px",
+                          background: "linear-gradient(135deg, #ef4444, #dc2626)",
                           color: "#fff",
                           border: "none",
-                          borderRadius: "4px",
+                          borderRadius: "8px",
                           cursor: "pointer",
-                          fontSize: "0.85rem"
+                          fontSize: "0.9rem",
+                          fontWeight: "600",
+                          boxShadow: "0 4px 12px rgba(220, 38, 38, 0.4)",
+                          transition: "all 0.3s"
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 16px rgba(220, 38, 38, 0.6)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.transform = "translateY(0)";
+                          e.target.style.boxShadow = "0 4px 12px rgba(220, 38, 38, 0.4)";
                         }}
                       >
                         🗑️ Delete
@@ -1558,39 +5093,48 @@ function FeedbackTab({ feedback, fetchFeedback, deleteFeedback, loading }) {
             justifyContent: "center",
             alignItems: "center",
             gap: 16,
-            marginTop: 20
+            marginTop: 20,
+            background: "rgba(55, 65, 81, 0.4)",
+            backdropFilter: "blur(10px)",
+            padding: "16px",
+            borderRadius: "12px",
+            border: "1px solid rgba(107, 114, 128, 0.3)"
           }}>
             <button
               onClick={goToPreviousPage}
               disabled={currentPage === 0}
               style={{
-                padding: "10px 16px",
-                backgroundColor: currentPage === 0 ? "#d1d5db" : "#1e40af",
+                padding: "12px 20px",
+                background: currentPage === 0 ? "rgba(209, 213, 219, 0.3)" : "linear-gradient(135deg, #a855f7, #ec4899)",
                 color: "#fff",
                 border: "none",
-                borderRadius: 6,
+                borderRadius: 8,
                 cursor: currentPage === 0 ? "not-allowed" : "pointer",
-                fontSize: "1.2rem",
-                fontWeight: "bold"
+                fontSize: "1rem",
+                fontWeight: "600",
+                boxShadow: currentPage === 0 ? "none" : "0 4px 15px rgba(168, 85, 247, 0.4)",
+                transition: "all 0.3s"
               }}
             >
               ← Previous
             </button>
-            <span style={{ color: "#000", fontSize: "1rem", fontWeight: "500" }}>
+            <span style={{ color: "#e5e7eb", fontSize: "1rem", fontWeight: "600", textShadow: "0 2px 4px rgba(0, 0, 0, 0.5)" }}>
               Page {currentPage + 1} of {totalPages}
             </span>
             <button
               onClick={goToNextPage}
               disabled={currentPage === totalPages - 1}
               style={{
-                padding: "10px 16px",
-                backgroundColor: currentPage === totalPages - 1 ? "#d1d5db" : "#1e40af",
+                padding: "12px 20px",
+                background: currentPage === totalPages - 1 ? "rgba(209, 213, 219, 0.3)" : "linear-gradient(135deg, #a855f7, #ec4899)",
                 color: "#fff",
                 border: "none",
-                borderRadius: 6,
+                borderRadius: 8,
                 cursor: currentPage === totalPages - 1 ? "not-allowed" : "pointer",
-                fontSize: "1.2rem",
-                fontWeight: "bold"
+                fontSize: "1rem",
+                fontWeight: "600",
+                boxShadow: currentPage === totalPages - 1 ? "none" : "0 4px 15px rgba(168, 85, 247, 0.4)",
+                transition: "all 0.3s"
               }}
             >
               Next →
@@ -1598,6 +5142,271 @@ function FeedbackTab({ feedback, fetchFeedback, deleteFeedback, loading }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function PropertyDetailsModal({ property, onClose, onEdit, onStatusChange }) {
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.85)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1000,
+      backdropFilter: "blur(5px)"
+    }}>
+      <div style={{
+        background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+        padding: 32,
+        borderRadius: 16,
+        maxWidth: "900px",
+        width: "90%",
+        maxHeight: "85vh",
+        overflowY: "auto",
+        color: "#fff",
+        border: "2px solid rgba(102, 126, 234, 0.3)",
+        boxShadow: "0 25px 80px rgba(0, 0, 0, 0.8)"
+      }}>
+        <h2 style={{
+          color: "#fff",
+          marginTop: 0,
+          fontSize: "2rem",
+          fontWeight: "bold",
+          background: "linear-gradient(135deg, #667eea, #764ba2)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+          marginBottom: "24px"
+        }}>{property.title}</h2>
+        
+        <div style={{ overflowX: "auto" }}>
+          <table style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            background: "rgba(102, 126, 234, 0.05)",
+            borderRadius: "8px"
+          }}>
+            <tbody>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600", width: "30%" }}>Type</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.type}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Area</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.area}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Bedrooms</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.bedrooms ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Bathrooms</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.bathrooms ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Parking</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.parking || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Furnished Status</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.furnished_status || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Balcony</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.balcony || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Nearby Places</td>
+                <td style={{ padding: "12px 16px", color: "#a0aec0" }}>{property.nearby_places || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Description</td>
+                <td style={{ padding: "12px 16px", color: "#a0aec0" }}>{property.description || "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Address</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.address}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>City</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.city}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Price</td>
+                <td style={{ padding: "12px 16px", color: "#fff", fontSize: "1.2rem", fontWeight: "bold" }}>₹{property.price}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Listing Type</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.property_listing_type}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Deposit</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.deposit ? `₹${property.deposit}` : "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Min Duration</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.min_duration ?? "-"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Contact Name</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.contact_name}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Contact Phone</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.contact_phone}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Contact Email</td>
+                <td style={{ padding: "12px 16px", color: "#fff" }}>{property.contact_email}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)" }}>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600" }}>Status</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <span style={{
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    backgroundColor: property.status === "accepted" ? "rgba(5, 150, 105, 0.2)" : property.status === "rejected" ? "rgba(220, 38, 38, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                    color: property.status === "accepted" ? "#10b981" : property.status === "rejected" ? "#ef4444" : "#f59e0b",
+                    fontWeight: "600",
+                    border: `1px solid ${property.status === "accepted" ? "#10b981" : property.status === "rejected" ? "#ef4444" : "#f59e0b"}`
+                  }}>
+                    {property.status || "pending"}
+                  </span>
+                </td>
+              </tr>
+              {property.image_urls && property.image_urls.length > 0 && (
+                <tr style={{ borderBottom: "1px solid rgba(102, 126, 234, 0.2)", background: "rgba(102, 126, 234, 0.05)" }}>
+                  <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600", verticalAlign: "top" }}>Images</td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {property.image_urls.map((src, i) => (
+                        <img key={i} src={src} alt={`img-${i}`} style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 8, border: "2px solid rgba(102, 126, 234, 0.3)" }} />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              <tr>
+                <td style={{ padding: "12px 16px", color: "#667eea", fontWeight: "600", verticalAlign: "top" }}>Actions</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => onEdit(property)}
+                      style={{
+                        padding: "10px 20px",
+                        background: "linear-gradient(135deg, #667eea, #764ba2)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: "0 4px 12px rgba(102, 126, 234, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.transform = "translateY(-2px)";
+                        e.target.style.boxShadow = "0 6px 16px rgba(102, 126, 234, 0.6)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = "0 4px 12px rgba(102, 126, 234, 0.4)";
+                      }}
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      onClick={() => onStatusChange(property.id, "accepted")}
+                      disabled={property.status === "accepted"}
+                      style={{
+                        padding: "10px 20px",
+                        backgroundColor: property.status === "accepted" ? "#6b7280" : "#10b981",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: property.status === "accepted" ? "not-allowed" : "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: property.status === "accepted" ? "none" : "0 4px 12px rgba(16, 185, 129, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (property.status !== "accepted") {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 16px rgba(16, 185, 129, 0.6)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = property.status === "accepted" ? "none" : "0 4px 12px rgba(16, 185, 129, 0.4)";
+                      }}
+                    >
+                      ✓ Accept
+                    </button>
+                    <button
+                      onClick={() => onStatusChange(property.id, "rejected")}
+                      disabled={property.status === "rejected"}
+                      style={{
+                        padding: "10px 20px",
+                        backgroundColor: property.status === "rejected" ? "#6b7280" : "#ef4444",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: property.status === "rejected" ? "not-allowed" : "pointer",
+                        fontSize: "0.9rem",
+                        fontWeight: "600",
+                        transition: "all 0.3s",
+                        boxShadow: property.status === "rejected" ? "none" : "0 4px 12px rgba(239, 68, 68, 0.4)"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (property.status !== "rejected") {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 16px rgba(239, 68, 68, 0.6)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = property.status === "rejected" ? "none" : "0 4px 12px rgba(239, 68, 68, 0.4)";
+                      }}
+                    >
+                      ✗ Reject
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: "24px",
+            padding: "12px 32px",
+            cursor: "pointer",
+            background: "linear-gradient(135deg, #667eea, #764ba2)",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "1rem",
+            fontWeight: "600",
+            width: "100%",
+            transition: "all 0.3s",
+            boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)"
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.transform = "translateY(-2px)";
+            e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = "translateY(0)";
+            e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+          }}
+        >Close</button>
+      </div>
     </div>
   );
 }

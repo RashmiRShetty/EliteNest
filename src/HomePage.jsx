@@ -61,10 +61,7 @@ const HomePage = () => {
     }
   };
 
-  // Search filters
-  const [locationFilter, setLocationFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('Property Type');
-  const [priceFilter, setPriceFilter] = useState('Price Range');
+  // Home is for guests only
 
   useEffect(() => {
     // Get initial session
@@ -79,6 +76,12 @@ const HomePage = () => {
 
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
 
   // Fetch unread notifications
   useEffect(() => {
@@ -124,9 +127,8 @@ const HomePage = () => {
     }
   };
 
-  const handleSearch = () => {
-    // Navigate to properties page with filters (placeholder logic)
-    navigate('/properties');
+  const handleGetStarted = () => {
+    navigate('/loginpage', { replace: false });
   };
 
   const greeting = user ? (user.user_metadata?.full_name || user.email.split("@")[0]) : "Guest";
@@ -214,54 +216,13 @@ const HomePage = () => {
                 Discover verified listings, premium apartments, and exclusive villas at the best prices. Your dream home awaits.
               </p>
               
-              {/* Search Box Embedded in Hero */}
-              <div style={{ 
-                background: 'rgba(255,255,255,0.05)', 
-                padding: '20px', 
-                borderRadius: '12px', 
-                border: '1px solid var(--border-color)',
-                backdropFilter: 'blur(10px)',
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '12px'
-              }}>
-                <input 
-                  type="text" 
-                  placeholder="Location" 
-                  value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
-                  style={{ 
-                    flex: '1 1 200px', 
-                    padding: '12px', 
-                    borderRadius: '8px', 
-                    border: '1px solid var(--border-color)', 
-                    background: 'var(--surface-color)', 
-                    color: 'white' 
-                  }} 
-                />
-                <select 
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                  style={{ 
-                    flex: '1 1 150px', 
-                    padding: '12px', 
-                    borderRadius: '8px', 
-                    border: '1px solid var(--border-color)', 
-                    background: 'var(--surface-color)', 
-                    color: 'white' 
-                  }}
-                >
-                  <option>Property Type</option>
-                  <option>Apartment</option>
-                  <option>Villa</option>
-                  <option>House</option>
-                </select>
+              <div style={{ marginTop: '8px' }}>
                 <button 
-                  onClick={handleSearch}
+                  onClick={handleGetStarted}
                   className="promo-btn" 
                   style={{ padding: '12px 24px', boxShadow: 'none' }}
                 >
-                  Search
+                  Get Started
                 </button>
               </div>
             </div>

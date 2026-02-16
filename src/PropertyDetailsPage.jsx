@@ -279,6 +279,13 @@ const PropertyDetailsPage = () => {
     }
   };
 
+  const closeSidebarOnWeb = () => {
+    if (window.innerWidth > 768) {
+      setSidebarCollapsed(true);
+      localStorage.setItem('elitenest:sidebarCollapsed', '1');
+    }
+  };
+
   const toggleSidebar = () => {
     setSidebarCollapsed(prev => {
       const next = !prev;
@@ -290,6 +297,68 @@ const PropertyDetailsPage = () => {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/", { replace: true });
+  };
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const getAppointmentAmountPaise = () => {
+    return 49900;
+  };
+
+  const createBooking = async (bookingData) => {
+    const { error: bookingError } = await supabase
+      .from("bookings")
+      .insert(bookingData);
+    if (bookingError) throw bookingError;
+    alert("Viewing request sent successfully! We will contact you shortly.");
+    setBookingForm({ name: '', email: '', phone: '', dates: [], message: '' });
+  };
+
+  const startRazorpayPayment = async (bookingData) => {
+    const key = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_NgwEwXk1hnhpL6";
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+      alert("Unable to load Razorpay.");
+      return;
+    }
+    const amount = getAppointmentAmountPaise();
+    const options = {
+      key,
+      amount,
+      currency: "INR",
+      name: "Elite Nest",
+      description: "Appointment Booking",
+      handler: async function () {
+        try {
+          await createBooking(bookingData);
+        } catch (err) {
+          alert("Failed to book appointment.");
+        }
+      },
+      prefill: {
+        name: bookingForm.name || "",
+        email: bookingForm.email || "",
+        contact: bookingForm.phone || ""
+      },
+      theme: { color: "#d97706" }
+    };
+    const rzp = new window.Razorpay(options);
+    rzp.on("payment.failed", function () {
+      alert("Payment failed.");
+    });
+    rzp.open();
   };
 
   const handleBookViewing = async (e) => {
@@ -331,19 +400,7 @@ const PropertyDetailsPage = () => {
         status: 'pending'
       };
 
-      console.log("Attempting to book viewing (using bookings table):", bookingData);
-
-      const { error: bookingError } = await supabase
-        .from("bookings")
-        .insert(bookingData);
-
-      if (bookingError) {
-        console.error("Error inserting into bookings table:", bookingError.message);
-        throw bookingError;
-      }
-
-      alert("Viewing request sent successfully! We will contact you shortly.");
-      setBookingForm({ name: '', email: '', phone: '', dates: [], message: '' });
+      await startRazorpayPayment(bookingData);
     } catch (error) {
       console.error("Final booking viewing error:", error);
       alert(`Failed to send viewing request: ${error.message || "Please try again"}`);
@@ -412,42 +469,42 @@ const PropertyDetailsPage = () => {
         </div>
         
         <nav className="sidebar-nav">
-          <Link to="/dashboard" className="nav-item">
+          <Link to="/dashboard" className="nav-item" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Home /></span>
             <span>Dashboard</span>
           </Link>
-          <Link to="/properties" className="nav-item active">
+          <Link to="/properties" className="nav-item active" onClick={closeSidebarOnWeb}>
             <span className="nav-icon"><Icons.Property /></span>
             <span>Properties</span>
           </Link>
           {user && (
             <>
-              <Link to="/mylistings" className="nav-item">
-                <span className="nav-icon"><Icons.Search /></span>
+              <Link to="/mylistings" className="nav-item" onClick={closeSidebarOnWeb}>
+                <span className="nav-icon"><Icons.Clipboard /></span>
                 <span>My Listings</span>
               </Link>
-              <Link to="/favorites" className="nav-item">
+              <Link to="/favorites?tab=appointments" className="nav-item" onClick={closeSidebarOnWeb}>
                 <span className="nav-icon"><Icons.Calendar /></span>
                 <span>Appointment History</span>
               </Link>
-              <Link to="/favorites" className="nav-item">
+              <Link to="/favorites?tab=saved" className="nav-item" onClick={closeSidebarOnWeb}>
                 <span className="nav-icon"><Icons.Heart /></span>
                 <span>Saved Properties</span>
               </Link>
-              <Link to="/messages" className="nav-item">
-                <span className="nav-icon"><Icons.Message /></span>
-                <span>Messages</span>
+              <Link to="/notifications" className="nav-item" onClick={closeSidebarOnWeb}>
+                <span className="nav-icon"><Icons.Bell /></span>
+                <span>Notifications</span>
               </Link>
-              <Link to="/profile" className="nav-item">
+              <Link to="/profile" className="nav-item" onClick={closeSidebarOnWeb}>
                 <span className="nav-icon"><Icons.User /></span>
                 <span>Profile</span>
               </Link>
-              <Link to="/settings" className="nav-item">
+              <Link to="/settings" className="nav-item" onClick={closeSidebarOnWeb}>
                 <span className="nav-icon"><Icons.Settings /></span>
                 <span>Settings</span>
               </Link>
               <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-                <button onClick={handleSignOut} className="nav-item" style={{ width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger-color)' }}>
+                <button onClick={() => { handleSignOut(); closeSidebarOnWeb(); }} className="nav-item" style={{ width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger-color)' }}>
                   <span className="nav-icon"><Icons.LogOut /></span>
                   <span>Sign Out</span>
                 </button>
