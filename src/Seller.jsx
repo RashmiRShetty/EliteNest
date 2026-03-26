@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "./supabase";
 import Footer from "./components/Footer";
 import SellerTipsAndBenefits from "./components/SellerTipsAndBenefits";
-import "./seller.css";
+import "./Seller.css";
 import "./Dashboard.css";
 
 const Icons = {

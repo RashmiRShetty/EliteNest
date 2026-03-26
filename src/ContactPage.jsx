@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "./supabase";
-import "./contact.css";
+import "./Contact.css";
 import "./Dashboard.css";
 
 const Icons = {
