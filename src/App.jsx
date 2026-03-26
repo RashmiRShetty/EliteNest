@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
-import "./contact.css";
+import "./Contact.css";
 import { Link, Routes, Route, useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "./supabase";
 
