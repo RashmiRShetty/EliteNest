@@ -12,7 +12,6 @@ const PaymentModal = ({ isOpen, onClose, onSelectPackage }) => {
       price: '₹299',
       period: '',
       features: [
-        'Standard Listing',
         'Listed for 15 Days',
         '5 Photos Limit',
         'Basic Support'

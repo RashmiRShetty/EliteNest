@@ -250,22 +250,6 @@ export default function Footer() {
             <p>+91 8970431369<br />+91 80505 62765</p>
           </div>
         </div>
-
-        {/* Newsletter Column */}
-        <div className="footer-col">
-          <h3>Newsletter</h3>
-          <form onSubmit={(e) => e.preventDefault()}>
-            <input type="email" placeholder="Email address" className="newsletter-input" />
-            <button type="submit" className="subscribe-btn">Subscribe</button>
-          </form>
-          <div className="social-links">
-            <a href="#" className="social-link">Twitter</a>
-            <span style={{color: '#444'}}>•</span>
-            <a href="#" className="social-link">LinkedIn</a>
-            <span style={{color: '#444'}}>•</span>
-            <a href="#" className="social-link">Instagram</a>
-          </div>
-        </div>
       </div>
     </footer>
   );

@@ -59,7 +59,7 @@ const AboutUsPage = () => {
         <main className="main-content" style={{ marginLeft: 0 }}>
           <header className="top-header">
             <div className="header-left">
-              <Link to="/" className="header-brand">
+              <Link to={user ? "/dashboard" : "/"} className="header-brand">
                 <img
                   src="/elite-nest-logo.png"
                   alt="Elite Nest"
@@ -68,7 +68,9 @@ const AboutUsPage = () => {
                 <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
               </Link>
               <nav className="header-links">
-                <Link to="/" className="header-link">Home</Link>
+                <Link to={user ? "/dashboard" : "/"} className="header-link">
+                  {user ? "Dashboard" : "Home"}
+                </Link>
                 <Link to="/properties" className="header-link">Properties</Link>
                 <Link to="/contact" className="header-link">Contact</Link>
                 <Link to="/about" className="header-link">About Us</Link>
@@ -210,7 +212,7 @@ const AboutUsPage = () => {
               <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
             </Link>
             <nav className="header-links">
-              <Link to="/" className="header-link">Home</Link>
+              <Link to="/dashboard" className="header-link">Dashboard</Link>
               <Link to="/properties" className="header-link">Properties</Link>
               <Link to="/contact" className="header-link">Contact</Link>
               <Link to="/about" className="header-link">About Us</Link>

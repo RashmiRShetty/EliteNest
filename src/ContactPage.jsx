@@ -108,7 +108,7 @@ export default function ContactPage() {
             <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
               <Icons.Menu />
             </button>
-            <Link to="/" className="header-brand">
+            <Link to={user ? "/dashboard" : "/"} className="header-brand">
               <img
                 src="/elite-nest-logo.png"
                 alt="Elite Nest"
@@ -117,7 +117,7 @@ export default function ContactPage() {
               <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
             </Link>
             <nav className="header-links">
-              <Link to="/" className="header-link">Home</Link>
+              <Link to="/dashboard" className="header-link">Dashboard</Link>
               <Link to="/properties" className="header-link">Properties</Link>
               <Link to="/contact" className="header-link">Contact</Link>
               <Link to="/about" className="header-link">About Us</Link>

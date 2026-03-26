@@ -6,7 +6,7 @@ import Footer from "./components/Footer";
 import "./App.css";
 import "./Dashboard.css";
 import "./PropertiesPage.css";
-import { MapPin, Filter, Search } from "lucide-react";
+import { MapPin, Filter, Search, Share2 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -148,6 +148,23 @@ function PropertiesPage() {
     }
   };
 
+  const handleShareProperty = (e, property) => {
+    e.stopPropagation();
+    if (!property || !property.id) return;
+    const url = `${window.location.origin}/properties/${property.id}`;
+    if (navigator.share) {
+      navigator
+        .share({
+          title: property.title || "EliteNest Property",
+          text: property.location || "",
+          url
+        })
+        .catch(() => {});
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).catch(() => {});
+    }
+  };
+
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
@@ -266,8 +283,9 @@ function PropertiesPage() {
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleViewDetailsClick = (propertyId) => {
-    navigate(`/properties/${propertyId}`);
+  const handleViewDetailsClick = (property) => {
+    if (!property || !property.id) return;
+    navigate(`/properties/${property.id}`, { state: { property } });
   };
 
   const greeting = user ? (user.user_metadata?.full_name || user.email?.split("@")[0] || "User") : "Guest";
@@ -371,38 +389,88 @@ function PropertiesPage() {
           <section className="property-grid">
             {filteredProperties.map((property) => (
               <div key={property.id} className="property-card">
-                <div className="property-image-container" onClick={() => handleViewDetailsClick(property.id)} style={{ cursor: 'pointer' }}>
-                  <span className={`property-badge ${property.type === 'sale' ? 'sale' : property.type === 'pg' ? 'pg' : 'rent'}`}>{property.type === 'sale' ? 'Sell' : property.type === 'pg' ? 'PG/Lease' : 'Rent'}</span>
-                  <button 
-                    className={`wishlist-btn ${wishlist.includes(property.id) ? 'active' : ''}`}
-                    onClick={(e) => toggleWishlist(e, property.id)}
+                <div className="property-image-container" onClick={() => handleViewDetailsClick(property)} style={{ cursor: 'pointer', position: 'relative' }}>
+                  <span
+                    className={`property-badge ${
+                      property.type === 'sale'
+                        ? 'sale'
+                        : property.type === 'pg'
+                        ? 'pg'
+                        : 'rent'
+                    }`}
+                  >
+                    {property.type === 'sale'
+                      ? 'Sell'
+                      : property.type === 'lease'
+                      ? 'Lease'
+                      : property.type === 'pg'
+                      ? 'PG/Lease'
+                      : 'Rent'}
+                  </span>
+                  <div
                     style={{
                       position: 'absolute',
                       top: '12px',
                       right: '12px',
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '50%',
-                      background: 'rgba(255, 255, 255, 0.9)',
-                      border: 'none',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      zIndex: 10,
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                      transition: 'all 0.2s ease'
+                      gap: '8px',
+                      zIndex: 10
                     }}
                   >
-                    <Icons.Heart 
-                      style={{ 
-                        width: '20px', 
-                        height: '20px', 
-                        fill: wishlist.includes(property.id) ? '#ef4444' : 'none',
-                        color: wishlist.includes(property.id) ? '#ef4444' : '#333'
-                      }} 
-                    />
-                  </button>
+                    <button
+                      className={`wishlist-btn ${wishlist.includes(property.id) ? 'active' : ''}`}
+                      onClick={(e) => toggleWishlist(e, property.id)}
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'rgba(255, 255, 255, 0.98)',
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '18px',
+                          lineHeight: 1,
+                          color: wishlist.includes(property.id) ? '#ef4444' : '#000000'
+                        }}
+                      >
+                        ♥
+                      </span>
+                    </button>
+                    <button
+                      onClick={(e) => handleShareProperty(e, property)}
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'rgba(255, 255, 255, 0.98)',
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '18px',
+                          lineHeight: 1,
+                          color: '#000000'
+                        }}
+                      >
+                        ⇪
+                      </span>
+                    </button>
+                  </div>
                   <img
                     src={property.img || property.photos?.[0] || 'https://via.placeholder.com/400'}
                     alt={property.title}
@@ -420,10 +488,10 @@ function PropertiesPage() {
                   </div>
                   <div className="property-footer">
                     <span className="property-price">
-                      ₹{property.price.toLocaleString()}{property.type === 'sale' ? '' : '/month'}
+                      ₹{property.price.toLocaleString()}{property.type === 'sale' || property.type === 'lease' ? '' : '/month'}
                     </span>
                     <button 
-                      onClick={() => handleViewDetailsClick(property.id)}
+                      onClick={() => handleViewDetailsClick(property)}
                       className="property-link"
                     >
                       Details
@@ -451,10 +519,10 @@ function PropertiesPage() {
                   <Popup>
                     <div>
                       <h3>{property.title}</h3>
-                      <p>₹{property.price.toLocaleString()}{property.type === 'sale' ? '' : '/month'}</p>
+                      <p>₹{property.price.toLocaleString()}{property.type === 'sale' || property.type === 'lease' ? '' : '/month'}</p>
                       <p>{property.location}</p>
                       <button 
-                        onClick={() => handleViewDetailsClick(property.id)}
+                        onClick={() => handleViewDetailsClick(property)}
                         style={{
                           padding: "5px 10px",
                           backgroundColor: "var(--secondary-color)",
@@ -479,14 +547,7 @@ function PropertiesPage() {
     </div>
   );
 
-  if (properties.length === 0) {
-    return (
-      <div className="empty-container">
-        <h2>No properties found</h2>
-        <p>There are no properties available at the moment.</p>
-      </div>
-    );
-  }
+  // Always show header/sidebar, even if no properties
 
   if (!user) {
     return (
@@ -503,7 +564,7 @@ function PropertiesPage() {
                 <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
               </Link>
               <nav className="header-links">
-                <Link to="/" className="header-link">Home</Link>
+                <Link to="/dashboard" className="header-link">Dashboard</Link>
                 <Link to="/properties" className="header-link">Properties</Link>
                 <Link to="/contact" className="header-link">Contact</Link>
                 <Link to="/about" className="header-link">About Us</Link>
@@ -517,7 +578,12 @@ function PropertiesPage() {
               </Link>
             </div>
           </header>
-          {renderContent()}
+          {properties.length === 0 ? (
+            <div className="empty-container">
+              <h2>No properties found</h2>
+              <p>There are no properties available at the moment.</p>
+            </div>
+          ) : renderContent()}
           <Footer />
         </main>
       </div>
@@ -580,7 +646,7 @@ function PropertiesPage() {
             <button className="header-hamburger" onClick={toggleSidebar} aria-label="Toggle menu">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
-            <Link to="/" className="header-brand">
+            <Link to={user ? "/dashboard" : "/"} className="header-brand">
               <img
                 src="/elite-nest-logo.png"
                 alt="Elite Nest"
@@ -589,7 +655,9 @@ function PropertiesPage() {
               <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
             </Link>
             <nav className="header-links">
-              <Link to="/" className="header-link">Home</Link>
+              <Link to={user ? "/dashboard" : "/"} className="header-link">
+                {user ? "Dashboard" : "Home"}
+              </Link>
               <Link to="/properties" className="header-link">Properties</Link>
               <Link to="/contact" className="header-link">Contact</Link>
               <Link to="/about" className="header-link">About Us</Link>
@@ -634,7 +702,12 @@ function PropertiesPage() {
             </button>
           </div>
         </header>
-        {renderContent()}
+        {properties.length === 0 ? (
+          <div className="empty-container">
+            <h2>No properties found</h2>
+            <p>There are no properties available at the moment.</p>
+          </div>
+        ) : renderContent()}
         <Footer />
       </div>
     </div>

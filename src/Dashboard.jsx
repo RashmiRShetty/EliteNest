@@ -154,6 +154,23 @@ export default function Dashboard() {
     }
   };
 
+  const handleShareProperty = (e, property) => {
+    e.stopPropagation();
+    if (!property || !property.id) return;
+    const url = `${window.location.origin}/properties/${property.id}`;
+    if (navigator.share) {
+      navigator
+        .share({
+          title: property.title || "EliteNest Property",
+          text: property.location || "",
+          url
+        })
+        .catch(() => {});
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).catch(() => {});
+    }
+  };
+
   const handleSignOut = async () => {
     setLoading(true);
     const { error } = await supabase.auth.signOut();
@@ -268,7 +285,7 @@ export default function Dashboard() {
             <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
           </Link>
           <nav className="header-links">
-            <Link to="/dashboard" className="header-link">Home</Link>
+            <Link to="/dashboard" className="header-link">Dashboard</Link>
             <Link to="/properties" className="header-link">Properties</Link>
             <Link to="/contact" className="header-link">Contact</Link>
             <Link to="/about" className="header-link">About Us</Link>
@@ -351,40 +368,94 @@ export default function Dashboard() {
           </div>
           
           <div className="property-grid">
-            {properties.length > 0 ? properties.slice(0, 3).map((property) => (
+            {properties.length > 0 ? properties.slice(0, 5).map((property) => (
               <div key={property.id} className="property-card">
-                <div className="property-image-container" onClick={() => navigate(`/properties/${property.id}`)} style={{ cursor: 'pointer' }}>
-                  <span className={`property-badge ${property.type === 'sale' ? 'sale' : property.type === 'pg' ? 'pg' : 'rent'}`}>{property.type === 'sale' ? 'Sell' : property.type === 'pg' ? 'PG/Lease' : 'Rent'}</span>
-                  <button 
-                    className={`wishlist-btn ${wishlist.includes(property.id) ? 'active' : ''}`}
-                    onClick={(e) => toggleWishlist(e, property.id)}
+                <div 
+                  className="property-image-container" 
+                  onClick={() => property?.id && navigate(`/properties/${property.id}`, { state: { property } })} 
+                  style={{ cursor: 'pointer', position: 'relative' }}
+                >
+                  <span
+                    className={`property-badge ${
+                      property.type === 'sale'
+                        ? 'sale'
+                        : property.type === 'pg'
+                        ? 'pg'
+                        : 'rent'
+                    }`}
+                  >
+                    {property.type === 'sale'
+                      ? 'Sell'
+                      : property.type === 'lease'
+                      ? 'Lease'
+                      : property.type === 'pg'
+                      ? 'PG/Lease'
+                      : 'Rent'}
+                  </span>
+                  <div
                     style={{
                       position: 'absolute',
                       top: '12px',
                       right: '12px',
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '50%',
-                      background: 'rgba(255, 255, 255, 0.9)',
-                      border: 'none',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      zIndex: 10,
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                      transition: 'all 0.2s ease'
+                      gap: '8px',
+                      zIndex: 10
                     }}
                   >
-                    <Icons.Heart 
-                      style={{ 
-                        width: '20px', 
-                        height: '20px', 
-                        fill: wishlist.includes(property.id) ? '#ef4444' : 'none',
-                        color: wishlist.includes(property.id) ? '#ef4444' : '#333'
-                      }} 
-                    />
-                  </button>
+                    <button 
+                      className={`wishlist-btn ${wishlist.includes(property.id) ? 'active' : ''}`}
+                      onClick={(e) => toggleWishlist(e, property.id)}
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'rgba(255, 255, 255, 0.98)',
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '18px',
+                          lineHeight: 1,
+                          color: wishlist.includes(property.id) ? '#ef4444' : '#000000'
+                        }}
+                      >
+                        ♥
+                      </span>
+                    </button>
+                    <button
+                      onClick={(e) => handleShareProperty(e, property)}
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'rgba(255, 255, 255, 0.98)',
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '18px',
+                          lineHeight: 1,
+                          color: '#000000'
+                        }}
+                      >
+                        ⇪
+                      </span>
+                    </button>
+                  </div>
                   <img 
                     src={property.img} 
                     alt={property.title} 
@@ -407,7 +478,11 @@ export default function Dashboard() {
                     <span className="property-price">
                       ₹{typeof property.price === 'number' ? property.price.toLocaleString() : property.price}
                     </span>
-                    <Link to={`/properties/${property.id}`} className="property-link">
+                    <Link 
+                      to={`/properties/${property.id}`} 
+                      state={{ property }} 
+                      className="property-link"
+                    >
                       Details
                     </Link>
                   </div>

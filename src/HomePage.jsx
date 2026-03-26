@@ -18,7 +18,15 @@ import {
   ArrowRight,
   ShieldCheck,
   Camera,
-  CreditCard
+  CreditCard,
+  MapPin,
+  Clock,
+  TrendingUp,
+  Award,
+  Zap,
+  Lock,
+  BarChart3,
+  Mail
 } from 'lucide-react';
 import Footer from './components/Footer';
 import './Dashboard.css';
@@ -46,6 +54,7 @@ const HomePage = () => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [expandedFAQ, setExpandedFAQ] = useState(null);
   
   const scrollRef = useRef(null);
 
@@ -76,12 +85,6 @@ const HomePage = () => {
 
     return () => listener.subscription.unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (user) {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [user, navigate]);
 
   // Fetch unread notifications
   useEffect(() => {
@@ -117,13 +120,12 @@ const HomePage = () => {
     navigate("/", { replace: true });
   };
 
-  const handleViewDetailsClick = async (propertyId) => {
+  const handleViewDetailsClick = async (property) => {
+    if (!property || !property.id) return;
     if (user) {
-      navigate(`/properties/${propertyId}`);
+      navigate(`/properties/${property.id}`, { state: { property } });
     } else {
-      // Allow viewing but maybe redirect to login if they try to book
-      // For now, let's redirect to login for consistency with App.jsx logic
-      navigate("/loginpage", { state: { from: `/properties/${propertyId}` } });
+      navigate("/loginpage", { state: { from: `/properties/${property.id}`, property } });
     }
   };
 
@@ -140,7 +142,7 @@ const HomePage = () => {
         {/* Top Header */}
         <header className="top-header">
           <div className="header-left">
-            <Link to="/" className="header-brand">
+            <Link to={user ? "/dashboard" : "/"} className="header-brand">
               <img
                 src="/elite-nest-logo.png"
                 alt="Elite Nest"
@@ -149,11 +151,10 @@ const HomePage = () => {
               <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
             </Link>
             <nav className="header-links">
-              <Link to="/" className="header-link">Home</Link>
+              <Link to="/dashboard" className="header-link">Dashboard</Link>
               <Link to="/properties" className="header-link">Properties</Link>
               <Link to="/contact" className="header-link">Contact</Link>
               <Link to="/about" className="header-link">About Us</Link>
-              {user && <Link to="/dashboard" className="header-link">Dashboard</Link>}
             </nav>
           </div>       
           <div className="header-actions">
@@ -207,27 +208,28 @@ const HomePage = () => {
           <section className="promo-banner" style={{ 
             flexDirection: 'row', 
             alignItems: 'center', 
-            minHeight: '400px', 
-            padding: '48px', 
-            marginBottom: '48px',
-            backgroundImage: "linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c')",
+            justifyContent: 'flex-start',
+            width: '100%',
+            margin: 0,
+            borderRadius: 0,
+            backgroundImage: "linear-gradient(135deg, rgba(0,0,0,0.7), rgba(0,0,0,0.5)), url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1600&q=80')",
             backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            borderRadius: 'var(--radius-lg)'
+            backgroundPosition: 'center right',
+            backgroundAttachment: 'fixed'
           }}>
-            <div className="promo-content" style={{ maxWidth: '50%', position: 'relative', zIndex: 1 }}>
-              <h1 className="promo-title" style={{ fontSize: '48px', marginBottom: '24px', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
-                Find Your Perfect Home<br/>
+            <div className="promo-content" style={{ maxWidth: '60%', position: 'relative', zIndex: 1, marginLeft: '48px' }}>
+              <h1 className="promo-title" style={{ fontSize: '56px', marginBottom: '24px', textShadow: '0 4px 20px rgba(0,0,0,0.6)' }}>
+                Find Your Perfect Home
               </h1>
-              <p className="promo-desc" style={{ fontSize: '18px', marginBottom: '32px' }}>
+              <p className="promo-desc" style={{ fontSize: '18px', marginBottom: '40px', lineHeight: '1.6' }}>
                 Discover verified listings, premium apartments, and exclusive villas at the best prices. Your dream home awaits.
               </p>
               
-              <div style={{ marginTop: '8px' }}>
+              <div style={{ marginTop: '24px' }}>
                 <button 
                   onClick={handleGetStarted}
                   className="promo-btn" 
-                  style={{ padding: '12px 24px', boxShadow: 'none' }}
+                  style={{ padding: '14px 48px', fontSize: '16px', fontWeight: 700 }}
                 >
                   Get Started
                 </button>
@@ -236,17 +238,18 @@ const HomePage = () => {
           </section>
 
           {/* Featured Properties */}
-          <div className="section-header">
-            <h2 className="section-title">Featured Properties</h2>
-            <Link to="/properties" className="view-all-link">View All Properties →</Link>
-          </div>
+          <section style={{ width: '100%', boxSizing: 'border-box' }}>
+            <div className="section-header">
+              <h2 className="section-title">Featured Properties</h2>
+              <Link to="/properties" className="view-all-link">View All Properties →</Link>
+            </div>
 
           {loading ? (
             <div className="loading-container" style={{ height: '200px', background: 'transparent' }}>
               <div className="spinner"></div>
             </div>
           ) : (
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', padding: '0 48px 48px 48px' }}>
               <button 
                 onClick={() => scroll('left')}
                 style={{
@@ -278,8 +281,8 @@ const HomePage = () => {
                 style={{
                   display: 'flex',
                   overflowX: 'auto',
-                  gap: '24px',
-                  padding: '10px 10px 30px 10px',
+                  gap: '32px',
+                  padding: '20px 0 40px 0',
                   scrollbarWidth: 'none',
                   msOverflowStyle: 'none',
                   WebkitOverflowScrolling: 'touch',
@@ -298,7 +301,7 @@ const HomePage = () => {
                   <div 
                     key={property.id} 
                     className="property-card" 
-                    onClick={() => handleViewDetailsClick(property.id)}
+                    onClick={() => handleViewDetailsClick(property)}
                     style={{
                       minWidth: '340px',
                       maxWidth: '340px',
@@ -325,7 +328,7 @@ const HomePage = () => {
                       </div>
                       <div className="property-footer">
                         <div className="property-price">
-                          {property.price}
+                          ₹{property.price?.toLocaleString?.("en-IN") ?? property.price}
                           {property.type === 'rent' && <span style={{fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 400}}>/mo</span>}
                         </div>
                         <button className="property-link">View</button>
@@ -361,6 +364,134 @@ const HomePage = () => {
               </button>
             </div>
           )}
+          </section>
+
+          {/* Why Choose Us Section */}
+          <section className="why-choose-section">
+            <h2 className="why-choose-title">Why Choose Elite Nest?</h2>
+            
+            <div className="benefits-grid">
+              <div className="benefit-card">
+                <div className="benefit-icon">🏠</div>
+                <h3>Verified Listings</h3>
+                <p>Every property is thoroughly vetted to ensure quality and authenticity</p>
+              </div>
+              <div className="benefit-card">
+                <div className="benefit-icon">⚡</div>
+                <h3>Quick Process</h3>
+                <p>Find and book your perfect property in just a few clicks</p>
+              </div>
+              <div className="benefit-card">
+                <div className="benefit-icon">🔒</div>
+                <h3>Safe & Secure</h3>
+                <p>Protected transactions with optional escrow and buyer protection</p>
+              </div>
+              <div className="benefit-card">
+                <div className="benefit-icon">💬</div>
+                <h3>Expert Support</h3>
+                <p>Dedicated agents available 24/7 to assist you</p>
+              </div>
+              <div className="benefit-card">
+                <div className="benefit-icon">📍</div>
+                <h3>Prime Locations</h3>
+                <p>Access to properties in the most sought-after neighborhoods</p>
+              </div>
+              <div className="benefit-card">
+                <div className="benefit-icon">✨</div>
+                <h3>Premium Quality</h3>
+                <p>Curated selection of high-quality residential properties</p>
+              </div>
+            </div>
+
+            <div className="quick-features" style={{ marginTop: '60px' }}>
+              <div className="quick-feature">
+                <div className="quick-feature-icon">🎯</div>
+                <div className="quick-feature-text">
+                  <h4>Smart Search</h4>
+                  <p>Advanced filters and recommendations</p>
+                </div>
+              </div>
+              <div className="quick-feature">
+                <div className="quick-feature-icon">📸</div>
+                <div className="quick-feature-text">
+                  <h4>High Quality Photos</h4>
+                  <p>Professional property imagery</p>
+                </div>
+              </div>
+              <div className="quick-feature">
+                <div className="quick-feature-icon">🚀</div>
+                <div className="quick-feature-text">
+                  <h4>Fast Listings</h4>
+                  <p>New properties added daily</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* CTA Featured Properties */}
+          <section style={{ padding: '48px', width: '100%', boxSizing: 'border-box' }}>
+            <div className="cta-featured-grid">
+              <div className="cta-card">
+                <div className="cta-card-icon">🏘️</div>
+                <h3>Want to Sell?</h3>
+                <p>List your property and reach thousands of potential buyers. Get maximum exposure with our premium marketing tools.</p>
+                <Link to="/loginpage" className="cta-card-btn">List Property</Link>
+              </div>
+              <div className="cta-card">
+                <div className="cta-card-icon">🔔</div>
+                <h3>Get Alerts</h3>
+                <p>Never miss your dream property. Set up customized alerts and get notified instantly when new listings match your criteria.</p>
+                <button className="cta-card-btn" onClick={handleGetStarted}>Create Alert</button>
+              </div>
+            </div>
+          </section>
+
+          {/* FAQ Section */}
+          <section className="faq-section">
+            <div className="faq-container">
+              <h2 className="faq-title">Frequently Asked Questions</h2>
+              
+              {[
+                {
+                  question: 'How do I search for properties?',
+                  answer: 'Use our advanced search feature to filter by location, price, property type, and amenities. You can also set up alerts to get notified about new listings matching your criteria.'
+                },
+                {
+                  question: 'Is it safe to transact on Elite Nest?',
+                  answer: 'Yes, we offer secure transactions with optional escrow services. All payments are protected and verified. Our platform uses advanced security measures to protect your data.'
+                },
+                {
+                  question: 'How long does the buying/renting process take?',
+                  answer: 'The timeline varies depending on your needs. Typically, from first viewing to agreement completion takes 2-4 weeks. Our agents can help expedite the process.'
+                },
+                {
+                  question: 'What fees does Elite Nest charge?',
+                  answer: 'For buyers and renters, Elite Nest is completely free. Property sellers can list their properties with competitive commission rates. Contact our sales team for detailed pricing.'
+                },
+                {
+                  question: 'Can I list multiple properties?',
+                  answer: 'Yes! Property managers and developers can list multiple properties. We offer bulk upload options and dedicated support for commercial accounts.'
+                },
+                {
+                  question: 'How do I contact support?',
+                  answer: 'You can reach our support team via chat, email, or phone. We\'re available 24/7 to help you with any questions or concerns.'
+                }
+              ].map((faq, index) => (
+                <div key={index} className="faq-item">
+                  <div 
+                    className="faq-question"
+                    onClick={() => setExpandedFAQ(expandedFAQ === index ? null : index)}
+                  >
+                    <span>{faq.question}</span>
+                    <span className={`faq-toggle ${expandedFAQ === index ? 'active' : ''}`}>▼</span>
+                  </div>
+                  <div className={`faq-answer ${expandedFAQ === index ? 'active' : ''}`}>
+                    {faq.answer}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
 
           {/* Split About Elite Section */}
           <section className="about-elite-split">
@@ -387,7 +518,7 @@ const HomePage = () => {
               </div>
 
               <div className="elite-cta-row">
-                <Link to="/seller" className="elite-cta">List Your Property <Icons.ArrowRight /></Link>
+                <Link to="/login" className="elite-cta">List Your Property <Icons.ArrowRight /></Link>
                 <Link to="/contact" className="elite-contact">Contact Sales</Link>
               </div>
             </div>

@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import "./PropertyForm.css";
 import "./Dashboard.css"; // Import Dashboard styles
-import "./components/PaymentModal.css"; // Import Payment styles for package selection
 import Footer from "./components/Footer.jsx";
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { CheckCircle, Home, User, Phone, Mail, MapPin, UploadCloud, ArrowRight, ArrowLeft, Building, DollarSign, Check, Shield, Crown, Sparkles, X } from "lucide-react";
@@ -74,65 +73,15 @@ const PropertyForm = () => {
   const [activeField, setActiveField] = useState(null); // Track which input field is active
   const [showMapModal, setShowMapModal] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState(null);
-  const [selectedPackage, setSelectedPackage] = useState(null);
-  const [viewDetailsPackage, setViewDetailsPackage] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [locationQuery, setLocationQuery] = useState("");
+  const [locationSuggestions, setLocationSuggestions] = useState([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const locationDebounceRef = useRef(null);
 
-  const packages = [
-    {
-      id: 'silver',
-      name: 'Silver',
-      price: '₹299',
-      period: '',
-      maxPhotos: 5,
-      validityDays: 15,
-      features: [
-        'Standard Listing',
-        'Listed for 15 Days',
-        '5 Photos Limit',
-        'Basic Support'
-      ],
-      isPopular: false
-    },
-    {
-      id: 'gold',
-      name: 'Gold',
-      price: '₹499',
-      period: '',
-      maxPhotos: 10,
-      validityDays: 30,
-      features: [
-        'Featured Badge',
-        'Top of Search Results',
-        'Listed for 30 Days',
-        '10 Photos Limit',
-        'Priority Support',
-        'Verified Tag'
-      ],
-      isPopular: true
-    },
-    {
-      id: 'platinum',
-      name: 'Platinum',
-      price: '₹999',
-      period: '',
-      maxPhotos: 100,
-      validityDays: 45,
-      features: [
-        'All Gold Features',
-        'Listed for 45 Days',
-        'Unlimited Photos',
-        'Social Media Promotion',
-        'Email Blast to Buyers',
-        'Dedicated Agent'
-      ],
-      isPopular: false
-    }
-  ];
-
-  const isRentOrLease = formData.listingType === "Rent" || formData.listingType === "Lease";
+  const isRent = formData.listingType === "Rent";
+  const isLease = formData.listingType === "Lease";
+  const isRentOrLease = isRent || isLease;
 
   // Auth check and Sidebar logic
   useEffect(() => {
@@ -181,6 +130,79 @@ const PropertyForm = () => {
     if (!error) navigate("/", { replace: true });
   };
 
+  const handleLocationInputChange = (e) => {
+    const value = e.target.value;
+    setLocationQuery(value);
+    setSelectedLocation(null);
+
+    setFormData((prev) => ({
+      ...prev,
+      address: value
+    }));
+
+    const error = validateField("address", value);
+    setErrors((prev) => ({ ...prev, address: error }));
+
+    if (locationDebounceRef.current) {
+      clearTimeout(locationDebounceRef.current);
+    }
+
+    if (!value || value.trim().length < 3) {
+      setLocationSuggestions([]);
+      return;
+    }
+
+    locationDebounceRef.current = setTimeout(() => {
+      setLocationLoading(true);
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&addressdetails=1&limit=5`)
+        .then((response) => response.json())
+        .then((results) => {
+          if (Array.isArray(results)) {
+            setLocationSuggestions(results);
+          } else {
+            setLocationSuggestions([]);
+          }
+        })
+        .catch((error) => {
+          console.error("Location search error:", error);
+        })
+        .finally(() => {
+          setLocationLoading(false);
+        });
+    }, 400);
+  };
+
+  const handleLocationSuggestionSelect = (suggestion) => {
+    if (!suggestion) return;
+
+    const displayName = suggestion.display_name || "";
+    const addr = suggestion.address || {};
+    const cityFromSuggestion =
+      addr.city ||
+      addr.town ||
+      addr.village ||
+      addr.suburb ||
+      addr.state_district ||
+      addr.state ||
+      "";
+
+    setSelectedLocation(displayName);
+    setLocationQuery(displayName);
+    setLocationSuggestions([]);
+
+    setFormData((prev) => ({
+      ...prev,
+      address: displayName,
+      city: cityFromSuggestion || prev.city
+    }));
+
+    setErrors((prev) => ({
+      ...prev,
+      address: validateField("address", displayName),
+      ...(cityFromSuggestion ? { city: validateField("city", cityFromSuggestion) } : {})
+    }));
+  };
+
   const closeSidebarOnWeb = () => {
     setSidebarCollapsed(true);
     localStorage.setItem('elitenest:sidebarCollapsed', '1');
@@ -214,6 +236,8 @@ const PropertyForm = () => {
               if (data && data.display_name) {
                 const placeName = data.display_name;
                 setSelectedLocation(placeName);
+                setLocationQuery(placeName);
+                setLocationSuggestions([]);
                 setFormData(prev => ({
                   ...prev,
                   address: placeName
@@ -222,6 +246,8 @@ const PropertyForm = () => {
                 // Fallback to coordinates if geocoding fails
                 const locationText = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
                 setSelectedLocation(locationText);
+                setLocationQuery(locationText);
+                setLocationSuggestions([]);
                 setFormData(prev => ({
                   ...prev,
                   address: locationText
@@ -233,6 +259,8 @@ const PropertyForm = () => {
               // Fallback to coordinates
               const locationText = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
               setSelectedLocation(locationText);
+              setLocationQuery(locationText);
+              setLocationSuggestions([]);
               setFormData(prev => ({
                 ...prev,
                 address: locationText
@@ -258,6 +286,8 @@ const PropertyForm = () => {
         if (data && data.display_name) {
           const placeName = data.display_name;
           setSelectedLocation(placeName);
+          setLocationQuery(placeName);
+          setLocationSuggestions([]);
           setFormData(prev => ({
             ...prev,
             address: placeName
@@ -266,6 +296,8 @@ const PropertyForm = () => {
           // Fallback to coordinates if geocoding fails
           const locationText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
           setSelectedLocation(locationText);
+          setLocationQuery(locationText);
+          setLocationSuggestions([]);
           setFormData(prev => ({
             ...prev,
             address: locationText
@@ -277,6 +309,8 @@ const PropertyForm = () => {
         // Fallback to coordinates
         const locationText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
         setSelectedLocation(locationText);
+        setLocationQuery(locationText);
+        setLocationSuggestions([]);
         setFormData(prev => ({
           ...prev,
           address: locationText
@@ -341,7 +375,8 @@ const PropertyForm = () => {
       case "price":
         if (!value) error = "Price is required";
         else if (isNaN(value) || parseFloat(value) <= 0) error = "Must be positive";
-        else if ((formData.listingType === "Rent" || formData.listingType === "Lease") && value.toString().length > 8) error = "Max 8 digits";
+        else if (formData.listingType === "Rent" && value.toString().length > 8) error = "Max 8 digits";
+        else if (formData.listingType === "Lease" && value.toString().length > 9) error = "Max 9 digits";
         else if (formData.listingType === "Sell" && value.toString().length > 9) error = "Max 9 digits";
         break;
       case "contactName":
@@ -367,17 +402,17 @@ const PropertyForm = () => {
     let fieldsToValidate = [];
 
     if (stepNumber === 1) {
-      if (!selectedPackage) {
-        alert("Please select a package to proceed.");
-        return false;
-      }
-      return true;
-    } else if (stepNumber === 2) {
       fieldsToValidate = ["title", "type", "description", "contactName", "contactPhone", "contactEmail"];
-    } else if (stepNumber === 3) {
+    } else if (stepNumber === 2) {
       fieldsToValidate = ["area", "bedrooms", "bathrooms"];
-    } else if (stepNumber === 4) {
-      fieldsToValidate = ["address", "city", "price", ...(isRentOrLease ? ["deposit", "minDuration"] : [])];
+    } else if (stepNumber === 3) {
+      fieldsToValidate = [
+        "address",
+        "city",
+        "price",
+        ...(isRent ? ["deposit", "minDuration"] : []),
+        ...(isLease ? ["minDuration"] : []),
+      ];
     }
 
     fieldsToValidate.forEach(field => {
@@ -385,7 +420,7 @@ const PropertyForm = () => {
       if (error) newErrors[field] = error;
     });
 
-    if (stepNumber === 3) {
+    if (stepNumber === 2) {
       const areaValue = parseFloat(formData.area);
       if (!isNaN(areaValue) && areaValue < 100) {
         alert("Minimum area is 100 sq ft");
@@ -396,17 +431,22 @@ const PropertyForm = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const priceLabel = formData.listingType === "Sell" ? "Selling Price (₹)" : "Monthly Rent (₹)";
+  const priceLabel =
+    formData.listingType === "Sell"
+      ? "Selling Price (₹)"
+      : formData.listingType === "Lease"
+      ? "Lease Amount (₹, one-time)"
+      : "Monthly Rent (₹)";
 
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    if ((name === "deposit" || (name === "price" && (formData.listingType === "Rent" || formData.listingType === "Lease"))) && value.length > 8) {
+    if ((name === "deposit" || (name === "price" && formData.listingType === "Rent")) && value.length > 8) {
       alert("Maximum 8 digits allowed");
       return;
     }
 
-    if (name === "price" && formData.listingType === "Sell" && value.length > 9) {
+    if (name === "price" && (formData.listingType === "Sell" || formData.listingType === "Lease") && value.length > 9) {
       alert("Maximum 9 digits allowed");
       return;
     }
@@ -433,31 +473,30 @@ const PropertyForm = () => {
   };
 
   const handleImageChange = (e) => {
-    const maxPhotos = selectedPackage?.maxPhotos || 5;
+    const maxPhotos = 10; // Allow up to 10 photos initially
     const currentCount = propertyImages.length;
     const newFiles = Array.from(e.target.files);
     
     if (currentCount + newFiles.length > maxPhotos) {
-      alert(`You can only upload a maximum of ${maxPhotos} photos with the ${selectedPackage?.name || 'current'} package.`);
+      alert(`You can only upload a maximum of ${maxPhotos} photos.`);
       return;
     }
 
-    const files = [...propertyImages, ...newFiles].slice(0, maxPhotos);
-    imagePreviews.forEach((url) => URL.revokeObjectURL(url)); // Clean up old previews
+    // Only create previews for the newly selected files
+    const newPreviews = newFiles.map((file) => URL.createObjectURL(file));
     
-    // Create new previews for all files
-    const newPreviews = files.map((file) => URL.createObjectURL(file));
-    
-    setPropertyImages(files);
-    setImagePreviews(newPreviews);
+    setPropertyImages(prev => [...prev, ...newFiles]);
+    setImagePreviews(prev => [...prev, ...newPreviews]);
   };
 
   const removeImage = (index) => {
+    // Revoke the URL of the removed image to avoid memory leaks
+    if (imagePreviews[index]) {
+      URL.revokeObjectURL(imagePreviews[index]);
+    }
+    
     const newImages = propertyImages.filter((_, i) => i !== index);
     const newPreviews = imagePreviews.filter((_, i) => i !== index);
-    
-    // Revoke the URL of the removed image to avoid memory leaks
-    URL.revokeObjectURL(imagePreviews[index]);
     
     setPropertyImages(newImages);
     setImagePreviews(newPreviews);
@@ -468,11 +507,6 @@ const PropertyForm = () => {
   };
 
   const handlePrevious = () => setStep((prev) => prev - 1);
-
-  const handlePackageSelect = (pkg) => {
-    setSelectedPackage(pkg);
-    setStep(2);
-  };
 
   // Clear form function
   const clearForm = () => {
@@ -500,14 +534,12 @@ const PropertyForm = () => {
     setPropertyImages([]);
     setImagePreviews([]);
     setSelectedLocation(null);
-    setSelectedPackage(null);
     setStep(1);
     setErrors({});
   };
 
   const submitProperty = async () => {
     setLoading(true);
-    const pkgName = selectedPackage?.name || "Standard";
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("You must be logged in.");
@@ -522,11 +554,6 @@ const PropertyForm = () => {
         const { data } = supabase.storage.from("property_bucket").getPublicUrl(filePath);
         imageUrls.push(data.publicUrl);
       }
-
-      // Calculate expiry date
-      const validityDays = selectedPackage?.validityDays || 30;
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + validityDays);
 
       const { error: insertError } = await supabase.from("properties").insert([{
         user_id: user.id,
@@ -550,12 +577,11 @@ const PropertyForm = () => {
         furnished_status: formData.furnished,
         balcony: formData.balcony,
         nearby_places: formData.nearby,
-        // expiry_date: expiryDate.toISOString(), // TODO: Uncomment after running SQL to add expiry_date column
-        // package_name: pkgName // TODO: Uncomment after running SQL to add package_name column
+        status: 'pending' // Property is pending until admin approval and payment
       }]);
 
       if (insertError) throw insertError;
-      alert(`✅ Property listed successfully with ${pkgName} package! Valid for ${validityDays} days.`);
+      alert(`✅ Property listed successfully! It will be visible after admin approval and payment.`);
       clearForm();
     } catch (error) {
       console.error(error);
@@ -565,88 +591,16 @@ const PropertyForm = () => {
     }
   };
 
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      if (window.Razorpay) {
-        resolve(true);
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
-
-  const getPackageAmountPaise = () => {
-    const priceStr = selectedPackage?.price || "0";
-    const numeric = parseInt(String(priceStr).replace(/[^\d]/g, ""), 10) || 0;
-    return numeric * 100;
-  };
-
-  const startRazorpayPayment = async () => {
-    if (!selectedPackage) return;
-    const key = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_NgwEwXk1hnhpL6";
-    setPaymentProcessing(true);
-    const loaded = await loadRazorpayScript();
-    if (!loaded) {
-      setPaymentProcessing(false);
-      alert("Unable to load Razorpay.");
-      return;
-    }
-    const amount = getPackageAmountPaise();
-    const options = {
-      key,
-      amount,
-      currency: "INR",
-      name: "Elite Nest",
-      description: `${selectedPackage.name} Listing`,
-      handler: function (response) {
-        setPaymentProcessing(false);
-        setShowPaymentModal(false);
-        submitProperty();
-      },
-      prefill: {
-        name: formData.contactName || "",
-        email: formData.contactEmail || "",
-        contact: formData.contactPhone || ""
-      },
-      theme: { color: "#d97706" }
-    };
-    const rzp = new window.Razorpay(options);
-    rzp.on("payment.failed", function () {
-      setPaymentProcessing(false);
-      alert("Payment failed.");
-    });
-    rzp.open();
-  };
-
-  const onConfirmPayment = async () => {
-    await startRazorpayPayment();
-  };
-
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!validateStep(4)) return;
-
-    // Validate photo limit based on package
-    const maxPhotos = selectedPackage?.maxPhotos || 5;
-    if (propertyImages.length > maxPhotos) {
-      alert(`You have uploaded ${propertyImages.length} images, but the ${selectedPackage?.name} package allows a maximum of ${maxPhotos}. Please remove some images.`);
-      return;
-    }
+    if (!validateStep(3)) return;
 
     if (propertyImages.length < 3) {
       alert("Please upload at least 3 images.");
       return;
     }
     
-    if (!selectedPackage) {
-      alert("Please select a listing package before submitting.");
-      return;
-    }
-    setShowPaymentModal(true);
+    submitProperty();
   };
 
   // Helper for rendering pills
@@ -799,7 +753,7 @@ const PropertyForm = () => {
             <button onClick={toggleSidebar} className="header-hamburger">
               <Icons.Menu />
             </button>
-            <Link to="/" className="header-brand">
+            <Link to={user ? "/dashboard" : "/"} className="header-brand">
               <img
                 src="/elite-nest-logo.png"
                 alt="Elite Nest"
@@ -808,7 +762,7 @@ const PropertyForm = () => {
               <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
             </Link>
             <nav className="header-links">
-              <Link to="/" className="header-link">Home</Link>
+              <Link to="/dashboard" className="header-link">Dashboard</Link>
               <Link to="/properties" className="header-link">Properties</Link>
               <Link to="/contact" className="header-link">Contact</Link>
               <Link to="/about" className="header-link">About Us</Link>
@@ -849,8 +803,7 @@ const PropertyForm = () => {
           </div>
         </header>
 
-        {/* Existing Content Wrapped */}
-        <div className="dashboard-content">
+        <div className="dashboard-content property-dashboard-content">
           <div className="property-form-container" style={{ paddingTop: "0", height: "100%" }}>
             {/* LEFT SIDE - MARKETING */}
       <div className="form-left-section">
@@ -872,21 +825,16 @@ const PropertyForm = () => {
             <div className="steps-indicator">
               <div className={`step-item ${step >= 1 ? "active" : ""}`}>
                 <div className="step-circle">1</div>
-                <div className="step-text">Select Package</div>
+                <div className="step-text">Basic Details</div>
               </div>
               <div className={`step-line ${step >= 2 ? "active" : ""}`}></div>
               <div className={`step-item ${step >= 2 ? "active" : ""}`}>
                 <div className="step-circle">2</div>
-                <div className="step-text">Basic Details</div>
+                <div className="step-text">Property Info</div>
               </div>
               <div className={`step-line ${step >= 3 ? "active" : ""}`}></div>
               <div className={`step-item ${step >= 3 ? "active" : ""}`}>
                 <div className="step-circle">3</div>
-                <div className="step-text">Property Info</div>
-              </div>
-              <div className={`step-line ${step >= 4 ? "active" : ""}`}></div>
-              <div className={`step-item ${step >= 4 ? "active" : ""}`}>
-                <div className="step-circle">4</div>
                 <div className="step-text">Location & Photos</div>
               </div>
             </div>
@@ -905,115 +853,6 @@ const PropertyForm = () => {
           <div className="form-header-mobile">List Property</div>
           
           {step === 1 && (
-            <div className="form-step fade-in">
-              <h3 className="step-title">Select a Listing Package</h3>
-              <p className="step-subtitle" style={{ marginBottom: '24px', color: 'var(--text-secondary)' }}>
-                Choose the best plan to maximize your property's reach.
-              </p>
-              
-              <div className="payment-plans-container" style={{ padding: '0', gap: '24px' }}>
-                {packages.map((pkg) => (
-                  <div 
-                    key={pkg.id} 
-                    className={`plan-card ${pkg.id} ${selectedPackage?.id === pkg.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedPackage(pkg)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {pkg.isPopular && <span className="popular-badge">Most Popular</span>}
-                    
-                    <div className="plan-header">
-                      <div className="plan-icon-wrapper">
-                        {pkg.id === 'silver' && <Shield />}
-                        {pkg.id === 'gold' && <Crown />}
-                        {pkg.id === 'platinum' && <Sparkles />}
-                      </div>
-                    </div>
-
-                    <div className="plan-name">{pkg.name}</div>
-                    
-                    <div className="plan-price">
-                      {pkg.price}
-                      {pkg.period && <span>{pkg.period}</span>}
-                    </div>
-
-                    <button 
-                      type="button" 
-                      className="view-details-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setViewDetailsPackage(pkg);
-                      }}
-                    >
-                      View Details
-                    </button>
-                    
-                    <button 
-                      type="button"
-                      className="select-plan-btn"
-                    >
-                      {selectedPackage?.id === pkg.id ? 'Selected' : 'Select Plan'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Package Details Modal */}
-          {viewDetailsPackage && (
-            <div className="payment-modal-overlay" style={{ zIndex: 2000 }}>
-              <div className="payment-modal" style={{ maxWidth: '500px', height: 'auto', maxHeight: '90vh' }}>
-                <div className="payment-modal-header">
-                  <h2>{viewDetailsPackage.name} Package</h2>
-                  <button onClick={() => setViewDetailsPackage(null)} className="close-btn">&times;</button>
-                </div>
-                <div style={{ padding: '24px' }}>
-                  <div style={{ 
-                    fontSize: '32px', 
-                    fontWeight: 'bold', 
-                    marginBottom: '8px',
-                    color: 'var(--text-primary, #fff)'
-                  }}>
-                    {viewDetailsPackage.price}
-                  </div>
-                  <div style={{ 
-                    color: 'var(--text-secondary, #9ca3af)', 
-                    marginBottom: '24px' 
-                  }}>
-                    {viewDetailsPackage.period}
-                  </div>
-                  
-                  <ul className="plan-features" style={{ margin: 0 }}>
-                    {viewDetailsPackage.features.map((feature, index) => (
-                      <li key={index} style={{ marginBottom: '12px' }}>
-                        <Check size={20} style={{ marginRight: '12px', color: 'var(--success-color, #10b981)' }} />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <button 
-                    onClick={() => {
-                      setSelectedPackage(viewDetailsPackage);
-                      setViewDetailsPackage(null);
-                      setStep(2);
-                    }}
-                    className="select-plan-btn"
-                    style={{ 
-                      marginTop: '32px',
-                      background: 'var(--primary-accent, #d97706)',
-                      color: '#000',
-                      border: 'none'
-                    }}
-                  >
-                    Select This Plan
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
             <div className="form-step fade-in">
               <h3 className="step-title">Let's start with the basics</h3>
               
@@ -1034,7 +873,7 @@ const PropertyForm = () => {
 
               <div className="form-group">
                 <label>Property Type</label>
-                {renderPills("type", ["Apartment", "House", "Villa", "Land", "Commercial"])}
+                {renderPills("type", ["Apartment", "House", "Villa"])}
               </div>
 
               <div className="form-group">
@@ -1099,7 +938,7 @@ const PropertyForm = () => {
             </div>
           )}
 
-          {step === 3 && (
+          {step === 2 && (
             <div className="form-step fade-in">
               <h3 className="step-title">Property Specifications</h3>
 
@@ -1184,7 +1023,7 @@ const PropertyForm = () => {
             </div>
           )}
 
-          {step === 4 && (
+          {step === 3 && (
             <div className="form-step fade-in">
               <h3 className="step-title">Location & Pricing</h3>
 
@@ -1196,13 +1035,37 @@ const PropertyForm = () => {
                     <input
                       type="text"
                       name="address"
-                      value={selectedLocation || formData.address}
-                      onChange={handleChange}
-                      placeholder="Selected location will appear here"
-                      readOnly
+                      value={locationQuery || formData.address}
+                      onChange={handleLocationInputChange}
+                      placeholder="Type location name or use the options below"
                       className="location-input"
                     />
                   </div>
+                  {locationLoading && (
+                    <div className="location-loading-text">Searching locations...</div>
+                  )}
+                  {locationSuggestions.length > 0 && (
+                    <div className="location-suggestions">
+                      {locationSuggestions.map((s, index) => {
+                        const parts = (s.display_name || "").split(",");
+                        const main = parts[0] || "";
+                        const sub = parts.slice(1).join(", ").trim();
+                        return (
+                          <button
+                            type="button"
+                            key={`${s.place_id || index}`}
+                            className="location-suggestion-item"
+                            onClick={() => handleLocationSuggestionSelect(s)}
+                          >
+                            <span className="location-suggestion-main">{main}</span>
+                            {sub && (
+                              <span className="location-suggestion-sub">{sub}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="location-buttons">
                     <button 
                       type="button" 
@@ -1266,7 +1129,7 @@ const PropertyForm = () => {
                 {errors.price && <span className="error-text">{errors.price}</span>}
               </div>
 
-              {isRentOrLease && (
+              {isRent && (
                 <div className="form-row">
                   <div className="form-group">
                     <label>Deposit (₹)</label>
@@ -1289,8 +1152,20 @@ const PropertyForm = () => {
                 </div>
               )}
 
+              {isLease && (
+                <div className="form-group">
+                  <label>Min Duration (Months)</label>
+                  <input
+                    type="number"
+                    name="minDuration"
+                    value={formData.minDuration}
+                    onChange={handleChange}
+                  />
+                </div>
+              )}
+
               <div className="form-group">
-                <label>Upload Photos (Min 3)</label>
+                <label>Upload Photos </label>
                 <div className="file-upload-wrapper">
                   <input
                     type="file"
@@ -1335,7 +1210,7 @@ const PropertyForm = () => {
               <div /> // Spacer
             )}
 
-            {step < 4 ? (
+            {step < 3 ? (
               <button type="button" onClick={handleNext} className="btn-primary">
                 Next Step <ArrowRight size={16} />
               </button>
@@ -1347,36 +1222,6 @@ const PropertyForm = () => {
           </div>
         </form>
       </div>
-      
-      {showPaymentModal && (
-        <div className="payment-modal-overlay" style={{ zIndex: 2100 }}>
-          <div className="payment-modal" style={{ maxWidth: '520px', height: 'auto', maxHeight: '90vh' }}>
-            <div className="payment-modal-header">
-              <h2>Payment Required</h2>
-              <button onClick={() => setShowPaymentModal(false)} className="close-btn">×</button>
-            </div>
-            <div style={{ padding: '24px' }}>
-              <div style={{ fontSize: '18px', marginBottom: '8px' }}>
-                {selectedPackage?.name} Package
-              </div>
-              <div style={{ 
-                fontSize: '32px', 
-                fontWeight: 'bold', 
-                marginBottom: '24px',
-                color: 'var(--text-primary, #fff)'
-              }}>
-                {selectedPackage?.price}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                <button onClick={() => setShowPaymentModal(false)} className="btn-secondary">Cancel</button>
-                <button onClick={onConfirmPayment} className="btn-primary" disabled={paymentProcessing}>
-                  {paymentProcessing ? "Processing..." : "Pay & Submit"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       
       <MapModalContent />
           </div>

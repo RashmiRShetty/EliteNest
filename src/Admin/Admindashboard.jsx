@@ -3,11 +3,10 @@ import { supabase } from "../supabase.js";
 import { getArray } from "../utils/properties.js";
 import EditPropertyModal from "../components/EditPropertyModal";
 import emailjs from "@emailjs/browser";
-
-// EmailJS Configuration
-const SERVICE_ID = "service_lgq3cwf";
-const TEMPLATE_ID = "template_md0v59s";
-const PUBLIC_KEY = "DM42XVFihQTMWzqW3";
+import Sidebar from "./AdminSidebar";
+import Overview from "./AdminOverview";
+import { UsersTab, PropertiesTab, SellersTab, LeasesTab, RentalsTab, AppointmentsTab, PaymentsTab, RemindersTab, FeedbackTab, PropertyModal } from "./AdminTabs";
+import { SERVICE_ID, TEMPLATE_ID, PUBLIC_KEY } from "./AdminEmailConfig";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -19,6 +18,7 @@ export default function AdminDashboard() {
   const [appointments, setAppointments] = useState([]);
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [feedback, setFeedback] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -38,12 +38,13 @@ export default function AdminDashboard() {
       console.log("Triggering fetchAppointments for appointments tab");
       fetchAppointments();
     }
+    if (activeTab === "payments") fetchPayments();
     if (activeTab === "feedback") fetchFeedback();
   }, [activeTab]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    window.location.href = "/login";
+    window.location.href = "/admin";
   };
   const updateStatus = async (propertyId, newStatus) => {
     try {
@@ -390,44 +391,30 @@ export default function AdminDashboard() {
     setFetchError(null);
     try {
       console.log("Fetching ALL bookings for admin dashboard...");
-      
-      const [bookingsResult, bookingsCountResult] = await Promise.all([
-        supabase
-          .from("bookings")
-          .select("*")
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("bookings")
-          .select("id", { count: "exact", head: true })
-      ]);
 
-      const { data: bookingsData, error: bookingsError } = bookingsResult;
-      const { count: bookingsCount, error: bookingsCountError } = bookingsCountResult;
+      const { data: bookingsData, error: bookingsError, count } = await supabase
+        .from("bookings")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false });
 
       if (bookingsError) {
         console.error("Bookings table error:", bookingsError.message);
         setFetchError(bookingsError.message);
         setAppointments([]);
-        setAppointmentsCount( );
+        setAppointmentsCount(0);
         return;
       }
 
       const combinedRaw = bookingsData || [];
-      if (bookingsCountError) {
-        console.warn("Bookings count error:", bookingsCountError.message);
-        setAppointmentsCount(combinedRaw.length);
-      } else {
-        setAppointmentsCount(bookingsCount || 0);
-      }
+      setAppointmentsCount(count || combinedRaw.length);
 
-      console.log(`Raw bookings: ${combinedRaw.length}`);
+      console.log(`Raw bookings: ${combinedRaw.length}, Total count: ${count}`);
 
       if (combinedRaw.length === 0) {
         setAppointments([]);
         return;
       }
 
-      // Fetch related properties manually to avoid relationship errors
       const propertyIds = [...new Set(combinedRaw.map(item => item.property_id).filter(Boolean))];
       let propertiesMap = {};
 
@@ -447,7 +434,6 @@ export default function AdminDashboard() {
         }
       }
 
-      // Normalize bookings
       const unique = combinedRaw.reduce((acc, current) => {
         if (!current || !current.id) return acc;
         const currentId = String(current.id);
@@ -508,6 +494,40 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchPayments = async () => {
+    setLoading(true);
+    try {
+      // Map package names to prices
+      const packagePrices = {
+        'Silver': 299,
+        'Gold': 499,
+        'Platinum': 999
+      };
+
+      // Since there is no explicit payments table, we infer it from properties with packages
+      const { data, error } = await supabase
+        .from('properties')
+        .select('id, title, package_name, contact_name, contact_email, created_at')
+        .in('package_name', Object.keys(packagePrices))
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      const paymentsData = (data || []).map(p => ({
+        ...p,
+        amount: packagePrices[p.package_name] || 0,
+        status: 'Success',
+        payment_date: p.created_at
+      }));
+
+      setPayments(paymentsData);
+    } catch (error) {
+      console.error("Error fetching payments:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const deleteFeedback = async (id) => {
     if (!window.confirm("Are you sure you want to delete this feedback?")) return;
     try {
@@ -522,10 +542,23 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: activeTab === "overview" ? "linear-gradient(135deg, #0a0e27 0%, #1a1a3e 50%, #0f0f23 100%)" : "#f5f5f5" }}>
+    <div
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        background: "linear-gradient(135deg, #020617 0%, #020617 50%, #020617 100%)",
+      }}
+    >
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} handleLogout={handleLogout} />
 
-      <div style={{ marginLeft: 250, padding: activeTab === "overview" ? 0 : 40, flex: 1, background: activeTab === "overview" ? "transparent" : "transparent" }}>
+      <div
+        style={{
+          marginLeft: 260,
+          padding: 32,
+          flex: 1,
+          background: "transparent",
+        }}
+      >
         <Header activeTab={activeTab} />
 
         {activeTab === "overview" && <Overview />}
@@ -543,6 +576,15 @@ export default function AdminDashboard() {
         {activeTab === "leases" && <LeasesTab leases={leases} fetchLeases={fetchLeases} updateStatus={updateStatus} setEditingProperty={setEditingProperty} setShowModal={setShowModal} />}
         {activeTab === "rentals" && <RentalsTab rentals={rentals} fetchRentals={fetchRentals} updateStatus={updateStatus} setEditingProperty={setEditingProperty} setShowModal={setShowModal} />}
         {activeTab === "appointments" && <AppointmentsTab appointments={appointments} fetchAppointments={fetchAppointments} loading={loading} fetchError={fetchError} appointmentsCount={appointmentsCount} />}
+        {activeTab === "payments" && <PaymentsTab payments={payments} loading={loading} />}
+        {activeTab === "reminders" && (
+          <RemindersTab 
+            properties={properties} 
+            appointments={appointments} 
+            loading={loading} 
+            emailConfig={{ SERVICE_ID, TEMPLATE_ID, PUBLIC_KEY }}
+          />
+        )}
         {activeTab === "feedback" && <FeedbackTab feedback={feedback} fetchFeedback={fetchFeedback} deleteFeedback={deleteFeedback} loading={loading} />}
 
         {showEditModal && editingProperty && (
@@ -568,1038 +610,10 @@ export default function AdminDashboard() {
   );
 }
 
-/* ---------------- Components ---------------- */
-
-function Sidebar({ activeTab, setActiveTab, handleLogout }) {
-  const items = [
-    ["overview", "📊 Overview"],
-    ["users", "👥 Users"],
-    ["properties", "🏠 Properties"],
-    ["sellers", "🛍️ Sellers"],
-    ["leases", "📋 Leases"],
-    ["rentals", "🔑 Rentals"],
-    ["appointments", "📅 Appointments"],
-    ["feedback", "💬 Feedback"],
-  ];
-
-  return (
-    <div style={{ width: 250, background: "#1e293b", color: "#fff", padding: 50, position: "fixed", height: "100vh" }}>
-      <h2 style={{ marginBottom: 30, color: "#fff" }}>Elite Nest Admin</h2>
-      {items.map(([id, label]) => (
-        <div
-          key={id}
-          onClick={() => setActiveTab(id)}
-          style={{
-            padding: 12,
-            borderRadius: 6,
-            marginBottom: 8,
-            cursor: "pointer",
-            background: activeTab === id ? "#ff6b35" : "transparent",
-          }}
-        >
-          {label}
-        </div>
-      ))}
-      <div
-          onClick={handleLogout}
-          style={{
-            padding: 12,
-            borderRadius: 6,
-            marginTop: 20,
-            cursor: "pointer",
-            background: "transparent",
-            color: "#fff",
-            border: "1px solid #ff6b35"
-          }}
-        >
-          Logout
-      </div>
-    </div>
-  );
-}
-
 function Header({ activeTab }) {
   return null;
 }
-
-function Overview() {
-  const [overviewData, setOverviewData] = React.useState({
-    totalUsers: 0,
-    totalProperties: 0,
-    totalAppointments: 0,
-    pendingProperties: 0
-  });
-  const [loading, setLoading] = React.useState(false);
-
-  const fetchOverviewData = async () => {
-    setLoading(true);
-    try {
-      const [users, properties, pendingProps] = await Promise.all([
-        supabase.from("profiles").select("id", { count: "exact" }),
-        supabase.from("properties").select("id", { count: "exact" }),
-        supabase.from("properties").select("id", { count: "exact" }).eq("status", "pending")
-      ]);
-
-      const { count: bCount, error: bErr } = await supabase.from("bookings").select("id", { count: "exact", head: true });
-      const appointmentsCount = bErr ? 0 : (bCount || 0);
-
-      setOverviewData({
-        totalUsers: users.count || 0,
-        totalProperties: properties.count || 0,
-        totalAppointments: appointmentsCount,
-        pendingProperties: pendingProps.count || 0
-      });
-    } catch (error) {
-      console.error("Error fetching overview data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    fetchOverviewData();
-  }, []);
-
-  const StatCard = ({ title, value, icon, color }) => (
-    <div style={{
-      background: `linear-gradient(135deg, rgba(20, 25, 50, 0.8) 0%, rgba(25, 35, 60, 0.8) 100%)`,
-      border: `2px solid ${color}40`,
-      borderRadius: 20,
-      padding: 32,
-      flex: 1,
-      minWidth: "220px",
-      textAlign: "center",
-      transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-      cursor: "pointer",
-      boxShadow: `0 15px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1)`,
-      position: "relative",
-      overflow: "hidden",
-      backdropFilter: "blur(10px)"
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.boxShadow = `0 30px 70px ${color}30, inset 0 1px 0 rgba(255, 255, 255, 0.2)`;
-      e.currentTarget.style.transform = "translateY(-15px) scale(1.08)";
-      e.currentTarget.style.borderColor = color;
-      e.currentTarget.style.background = `linear-gradient(135deg, rgba(30, 35, 60, 0.9) 0%, rgba(35, 45, 70, 0.9) 100%)`;
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.boxShadow = `0 15px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1)`;
-      e.currentTarget.style.transform = "translateY(0) scale(1)";
-      e.currentTarget.style.borderColor = `${color}40`;
-      e.currentTarget.style.background = `linear-gradient(135deg, rgba(20, 25, 50, 0.8) 0%, rgba(25, 35, 60, 0.8) 100%)`;
-    }}>
-      <div style={{
-        position: "absolute",
-        top: "-50%",
-        left: "-50%",
-        width: "200%",
-        height: "200%",
-        background: `radial-gradient(circle, ${color}20 0%, transparent 70%)`,
-        animation: "pulse 3s ease-in-out infinite",
-        pointerEvents: "none"
-      }}></div>
-
-      <div style={{ position: "relative", zIndex: 2 }}>
-        <div style={{ fontSize: "52px", marginBottom: 20, display: "inline-block", filter: "drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))", animation: "float 3s ease-in-out infinite" }}>{icon}</div>
-        <div style={{ color: "#a0aec0", fontSize: "0.95rem", marginBottom: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: "1px" }}>{title}</div>
-        <div style={{ color: color, fontSize: "48px", fontWeight: "900", textShadow: `0 2px 15px ${color}60`, lineHeight: "1" }}>{value}</div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{
-      minHeight: "100vh",
-      background: "linear-gradient(135deg, #0a0e27 0%, #1a1a3e 50%, #0f0f23 100%)",
-      padding: "50px 20px",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
-      position: "relative",
-      overflow: "hidden"
-    }}>
-      <div style={{
-        position: "absolute",
-        width: "400px",
-        height: "400px",
-        background: "radial-gradient(circle, rgba(102, 126, 234, 0.15) 0%, transparent 70%)",
-        borderRadius: "50%",
-        top: "-100px",
-        left: "-100px",
-        pointerEvents: "none"
-      }}></div>
-      <div style={{
-        position: "absolute",
-        width: "300px",
-        height: "300px",
-        background: "radial-gradient(circle, rgba(236, 72, 153, 0.15) 0%, transparent 70%)",
-        borderRadius: "50%",
-        bottom: "-50px",
-        right: "-50px",
-        pointerEvents: "none"
-      }}></div>
-
-      <div style={{
-        maxWidth: "1400px",
-        margin: "0 auto",
-        position: "relative",
-        zIndex: 1
-      }}>
-        <div style={{
-          background: "linear-gradient(135deg, rgba(20, 25, 50, 0.9) 0%, rgba(25, 30, 60, 0.9) 100%)",
-          padding: "50px 40px",
-          borderRadius: 24,
-          color: "#fff",
-          marginBottom: 40,
-          boxShadow: "0 30px 100px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
-          backdropFilter: "blur(30px)",
-          border: "1px solid rgba(102, 126, 234, 0.2)",
-          animation: "slideDown 0.6s ease-out"
-        }}>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "30px"
-          }}>
-            <div style={{ flex: 1, minWidth: "300px" }}>
-              <div style={{ fontSize: "3.2rem", marginBottom: "16px", fontWeight: "900" }}>📊</div>
-              <h2 style={{ color: "#fff", margin: "0 0 12px 0", fontSize: "2.8rem", fontWeight: "900", background: "linear-gradient(135deg, #667eea 0%, #764ba2 50%, #ec4899 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Dashboard Overview</h2>
-              <p style={{ color: "#b0c4de", fontSize: "1.1rem", margin: "0", lineHeight: "1.6" }}>Real-time insights into your platform's performance and key metrics</p>
-            </div>
-            <button
-              onClick={fetchOverviewData}
-              disabled={loading}
-              style={{
-                padding: "14px 32px",
-                backgroundColor: loading ? "#4b5563" : "linear-gradient(135deg, #667eea, #764ba2)",
-                backgroundImage: !loading ? "linear-gradient(135deg, #667eea, #764ba2)" : undefined,
-                color: "#fff",
-                border: "none",
-                borderRadius: 12,
-                cursor: loading ? "not-allowed" : "pointer",
-                fontSize: "1.05rem",
-                fontWeight: "700",
-                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                boxShadow: loading ? "0 4px 15px rgba(75, 85, 99, 0.4)" : "0 8px 25px rgba(102, 126, 234, 0.5)",
-                whiteSpace: "nowrap"
-              }}
-              onMouseEnter={(e) => {
-                if (!loading) {
-                  e.target.style.transform = "translateY(-3px) scale(1.05)";
-                  e.target.style.boxShadow = "0 15px 40px rgba(102, 126, 234, 0.7)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.transform = "translateY(0) scale(1)";
-                e.target.style.boxShadow = loading ? "0 4px 15px rgba(75, 85, 99, 0.4)" : "0 8px 25px rgba(102, 126, 234, 0.5)";
-              }}
-            >
-              {loading ? "⏳ Refreshing..." : "🔄 Refresh Stats"}
-            </button>
-          </div>
-        </div>
-
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-          gap: 32,
-          marginBottom: 40
-        }}>
-          <StatCard title="Total Users" value={overviewData.totalUsers} icon="👥" color="#667eea" />
-          <StatCard title="Total Properties" value={overviewData.totalProperties} icon="🏠" color="#764ba2" />
-          <StatCard title="Pending Properties" value={overviewData.pendingProperties} icon="⏳" color="#f59e0b" />
-          <StatCard title="Total Appointments" value={overviewData.totalAppointments} icon="📅" color="#ec4899" />
-        </div>
-
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: 24,
-          marginTop: 40
-        }}>
-          <div style={{
-            background: "linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)",
-            border: "1px solid rgba(102, 126, 234, 0.3)",
-            borderRadius: 16,
-            padding: 24,
-            backdropFilter: "blur(10px)",
-            transition: "all 0.3s ease"
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = "0 15px 40px rgba(102, 126, 234, 0.2)";
-            e.currentTarget.style.transform = "translateY(-5px)";
-            e.currentTarget.style.borderColor = "rgba(102, 126, 234, 0.6)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = "none";
-            e.currentTarget.style.transform = "translateY(0)";
-            e.currentTarget.style.borderColor = "rgba(102, 126, 234, 0.3)";
-          }}>
-            <div style={{ fontSize: "28px", marginBottom: "12px" }}>📈</div>
-            <h3 style={{ margin: "0 0 8px 0", color: "#fff", fontSize: "1.2rem", fontWeight: "700" }}>Platform Growth</h3>
-            <p style={{ margin: 0, color: "#b0c4de", fontSize: "0.95rem" }}>Track your platform metrics in real-time</p>
-          </div>
-
-          <div style={{
-            background: "linear-gradient(135deg, rgba(236, 72, 153, 0.1) 0%, rgba(245, 158, 11, 0.1) 100%)",
-            border: "1px solid rgba(236, 72, 153, 0.3)",
-            borderRadius: 16,
-            padding: 24,
-            backdropFilter: "blur(10px)",
-            transition: "all 0.3s ease"
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = "0 15px 40px rgba(236, 72, 153, 0.2)";
-            e.currentTarget.style.transform = "translateY(-5px)";
-            e.currentTarget.style.borderColor = "rgba(236, 72, 153, 0.6)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = "none";
-            e.currentTarget.style.transform = "translateY(0)";
-            e.currentTarget.style.borderColor = "rgba(236, 72, 153, 0.3)";
-          }}>
-            <div style={{ fontSize: "28px", marginBottom: "12px" }}>🎯</div>
-            <h3 style={{ margin: "0 0 8px 0", color: "#fff", fontSize: "1.2rem", fontWeight: "700" }}>Active Listings</h3>
-            <p style={{ margin: 0, color: "#b0c4de", fontSize: "0.95rem" }}>Manage and approve property listings</p>
-          </div>
-
-          <div style={{
-            background: "linear-gradient(135deg, rgba(118, 75, 162, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%)",
-            border: "1px solid rgba(118, 75, 162, 0.3)",
-            borderRadius: 16,
-            padding: 24,
-            backdropFilter: "blur(10px)",
-            transition: "all 0.3s ease"
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = "0 15px 40px rgba(118, 75, 162, 0.2)";
-            e.currentTarget.style.transform = "translateY(-5px)";
-            e.currentTarget.style.borderColor = "rgba(118, 75, 162, 0.6)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = "none";
-            e.currentTarget.style.transform = "translateY(0)";
-            e.currentTarget.style.borderColor = "rgba(118, 75, 162, 0.3)";
-          }}>
-            <div style={{ fontSize: "28px", marginBottom: "12px" }}>💼</div>
-            <h3 style={{ margin: "0 0 8px 0", color: "#fff", fontSize: "1.2rem", fontWeight: "700" }}>User Management</h3>
-            <p style={{ margin: 0, color: "#b0c4de", fontSize: "0.95rem" }}>Monitor and manage user accounts</p>
-          </div>
-        </div>
-      </div>
-
-      <style>{`
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            transform: translateY(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-        @keyframes pulse {
-          0%, 100% {
-            transform: scale(1);
-            opacity: 0.5;
-          }
-          50% {
-            transform: scale(1.1);
-            opacity: 0.2;
-          }
-        }
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-10px);
-          }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-function UsersTab({ users, fetchUsers, loading }) {
-  const [currentPage, setCurrentPage] = React.useState(0);
-  const [searchQuery, setSearchQuery] = React.useState("");
-  const usersPerPage = 4;
-
-  const getDisplayName = (user) => {
-    const fromFields =
-      user.name ||
-      user.full_name ||
-      [user.first_name, user.last_name].filter(Boolean).join(" ") ||
-      user.username;
-    if (fromFields && String(fromFields).trim().length > 0) return fromFields;
-    if (user.email) return String(user.email).split("@")[0];
-    return "Unknown User";
-  };
-
-  const getInitials = (name) => {
-    return name
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0].toUpperCase())
-      .join("");
-  };
-
-  const getDisplayId = (user, fallbackIndex) => {
-    const raw = user.user_id || user.id || user.uuid || "";
-    const suffix = raw ? String(raw).slice(-4).toUpperCase() : String(fallbackIndex).padStart(4, "0");
-    return `#EN-${suffix}`;
-  };
-
-  const getRole = (user) => user.role || user.user_role || user.account_type || user.user_type || "Buyer";
-  const getStatus = (user) => {
-    if (user.status) return user.status;
-    if (user.is_active === false) return "Inactive";
-    return "Active";
-  };
-
-  const filteredUsers = users.filter((user) => {
-    const name = getDisplayName(user).toLowerCase();
-    const email = (user.email || "").toLowerCase();
-    return name.includes(searchQuery.toLowerCase()) || email.includes(searchQuery.toLowerCase());
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / usersPerPage));
-  const startIndex = currentPage * usersPerPage;
-  const displayedUsers = filteredUsers.slice(startIndex, startIndex + usersPerPage);
-  const showingFrom = filteredUsers.length === 0 ? 0 : startIndex + 1;
-  const showingTo = Math.min(startIndex + usersPerPage, filteredUsers.length);
-
-  const goToPreviousPage = () => {
-    setCurrentPage((prev) => Math.max(0, prev - 1));
-  };
-
-  const goToNextPage = () => {
-    setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
-  };
-
-  const pageNumbers = (() => {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    if (currentPage <= 1) return [1, 2, 3, "…", totalPages];
-    if (currentPage >= totalPages - 2) return [1, "…", totalPages - 2, totalPages - 1, totalPages];
-    return [1, "…", currentPage + 1, "…", totalPages];
-  })();
-
-  return (
-    <div style={{ fontFamily: "Inter, system-ui, -apple-system, Segoe UI, sans-serif" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: "1.8rem", color: "#1f2937" }}>Users</h2>
-          <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: "0.95rem" }}>Manage and monitor all platform members.</p>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ position: "relative" }}>
-            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af", fontSize: "0.9rem" }}>🔍</span>
-            <input
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(0); }}
-              placeholder="Search users..."
-              style={{
-                padding: "10px 14px 10px 34px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: "#fff",
-                fontSize: "0.95rem",
-                width: 220
-              }}
-            />
-          </div>
-
-          <button
-            onClick={fetchUsers}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: "#fff",
-              color: "#374151",
-              fontWeight: 600,
-              cursor: "pointer"
-            }}
-          >
-            {loading ? "Loading..." : "Refresh"}
-          </button>
-
-          <button
-            style={{
-              padding: "10px 18px",
-              borderRadius: 10,
-              border: "none",
-              background: "linear-gradient(135deg, #f97316, #f59e0b)",
-              color: "#fff",
-              fontWeight: 700,
-              cursor: "pointer",
-              boxShadow: "0 8px 20px rgba(249, 115, 22, 0.35)"
-            }}
-          >
-            + Add New User
-          </button>
-        </div>
-      </div>
-
-      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #eef2f7", boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)", overflow: "hidden" }}>
-        <div style={{ padding: "18px 22px", borderBottom: "1px solid #eef2f7", display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1fr 1fr", color: "#94a3b8", fontWeight: 600, fontSize: "0.8rem", letterSpacing: "0.6px", textTransform: "uppercase" }}>
-          <div>User Profile</div>
-          <div>Email Address</div>
-          <div>Role</div>
-          <div>Status</div>
-          <div>Actions</div>
-        </div>
-
-        {displayedUsers.length === 0 ? (
-          <div style={{ padding: "28px 22px", color: "#6b7280" }}>{loading ? "Loading users..." : "No users found."}</div>
-        ) : (
-          displayedUsers.map((user, index) => {
-            const name = getDisplayName(user);
-            const initials = getInitials(name);
-            const role = getRole(user);
-            const status = getStatus(user);
-            const statusColor = status.toLowerCase() === "active" ? "#10b981" : "#9ca3af";
-            return (
-              <div key={user.id || index} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1fr 1fr", padding: "18px 22px", alignItems: "center", borderBottom: "1px solid #f1f5f9" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "#6b7280" }}>
-                    {initials}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 600, color: "#111827" }}>{name}</div>
-                    <div style={{ fontSize: "0.85rem", color: "#9ca3af" }}>ID: {getDisplayId(user, startIndex + index + 1)}</div>
-                  </div>
-                </div>
-
-                <div style={{ color: "#6b7280" }}>{user.email || "N/A"}</div>
-
-                <div>
-                  <span style={{
-                    padding: "6px 12px",
-                    borderRadius: 999,
-                    background: role.toLowerCase() === "admin" ? "#ede9fe" : role.toLowerCase() === "seller" ? "#fef3c7" : "#dbeafe",
-                    color: role.toLowerCase() === "admin" ? "#7c3aed" : role.toLowerCase() === "seller" ? "#d97706" : "#2563eb",
-                    fontWeight: 600,
-                    fontSize: "0.85rem"
-                  }}>
-                    {role}
-                  </span>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 8, color: statusColor, fontWeight: 600 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor, display: "inline-block" }}></span>
-                  {status}
-                </div>
-
-                <button
-                  title="Actions"
-                  onClick={() => alert("Row actions coming soon")}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #e5e7eb",
-                    background: "#fff",
-                    color: "#374151",
-                    fontWeight: 600,
-                    cursor: "pointer"
-                  }}
-                >
-                  Actions
-                </button>
-              </div>
-            );
-          })
-        )}
-
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 22px", color: "#6b7280" }}>
-          <div>Showing {showingFrom} to {showingTo} of {filteredUsers.length} users</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button
-              onClick={goToPreviousPage}
-              disabled={currentPage === 0}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-                background: currentPage === 0 ? "#f3f4f6" : "#fff",
-                color: "#6b7280",
-                cursor: currentPage === 0 ? "not-allowed" : "pointer"
-              }}
-            >
-              ‹
-            </button>
-            {pageNumbers.map((page, idx) => (
-              <button
-                key={`${page}-${idx}`}
-                onClick={() => typeof page === "number" && setCurrentPage(page - 1)}
-                disabled={page === "…"}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  border: "1px solid #e5e7eb",
-                  background: page === currentPage + 1 ? "#f97316" : "#fff",
-                  color: page === currentPage + 1 ? "#fff" : "#6b7280",
-                  fontWeight: 600,
-                  cursor: page === "…" ? "default" : "pointer"
-                }}
-              >
-                {page}
-              </button>
-            ))}
-            <button
-              onClick={goToNextPage}
-              disabled={currentPage >= totalPages - 1}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-                background: currentPage >= totalPages - 1 ? "#f3f4f6" : "#fff",
-                color: "#6b7280",
-                cursor: currentPage >= totalPages - 1 ? "not-allowed" : "pointer"
-              }}
-            >
-              ›
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PropertiesTab({ properties, fetchProperties, setSelectedProperty, setShowModal, updateStatus }) {
-  const [currentPage, setCurrentPage] = React.useState(0);
-  const [selectedPropertyLocal, setSelectedPropertyLocal] = React.useState(null);
-  const [showModalLocal, setShowModalLocal] = React.useState(false);
-  const [filterStatus, setFilterStatus] = React.useState("all");
-  const propertiesPerPage = 8;
-  
-  const filteredProperties = filterStatus === "all" 
-    ? properties 
-    : properties.filter(p => p.status === filterStatus);
-  
-  const totalPages = Math.ceil(filteredProperties.length / propertiesPerPage);
-  const startIndex = currentPage * propertiesPerPage;
-  const displayedProperties = filteredProperties.slice(startIndex, startIndex + propertiesPerPage);
-  
-  const goToPreviousPage = () => {
-    setCurrentPage((prev) => Math.max(0, prev - 1));
-  };
-  
-  const goToNextPage = () => {
-    setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
-  };
-
-  const handleStatusChange = async (propertyId, newStatus) => {
-    try {
-      if (!updateStatus) {
-        console.warn("updateStatus function is not provided");
-        return;
-      }
-      await updateStatus(propertyId, newStatus);
-      setShowModalLocal(false);
-    } catch (error) {
-      console.error("Error updating status:", error);
-      alert("Error updating status: " + (error.message || "Unknown error"));
-    }
-  };
-
-  const handleEdit = (property) => {
-    setShowModalLocal(false);
-    setSelectedProperty(property);
-    setShowModal(true);
-  };
-
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
-        <button onClick={fetchProperties} style={{
-          padding: "12px 24px",
-          cursor: "pointer",
-          background: "linear-gradient(135deg, #667eea, #764ba2)",
-          color: "#fff",
-          border: "none",
-          borderRadius: "8px",
-          fontSize: "1rem",
-          fontWeight: "600",
-          boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
-          transition: "all 0.3s"
-        }}
-        onMouseEnter={(e) => {
-          e.target.style.transform = "translateY(-2px)";
-          e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
-        }}
-        onMouseLeave={(e) => {
-          e.target.style.transform = "translateY(0)";
-          e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
-        }}>🏠 Load Properties</button>
-        
-        {properties.length > 0 && (
-          <>
-            <span style={{
-              background: "rgba(102, 126, 234, 0.15)",
-              color: "#fff",
-              padding: "10px 20px",
-              borderRadius: "8px",
-              fontSize: "0.95rem",
-              fontWeight: "600",
-              border: "1px solid rgba(102, 126, 234, 0.3)"
-            }}>
-              Total: {properties.length} properties
-            </span>
-            
-            <div style={{ 
-              display: 'flex', 
-              background: 'rgba(102, 126, 234, 0.1)', 
-              padding: '6px', 
-              borderRadius: '10px', 
-              border: '1px solid rgba(102, 126, 234, 0.3)',
-              gap: '4px'
-            }}>
-              <button 
-                onClick={() => { setFilterStatus("all"); setCurrentPage(0); }}
-                style={{ 
-                  padding: '8px 16px', 
-                  border: 'none', 
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  background: filterStatus === "all" ? "linear-gradient(135deg, #667eea, #764ba2)" : "transparent",
-                  color: "#fff",
-                  fontWeight: "600",
-                  fontSize: "0.9rem",
-                  transition: "all 0.3s"
-                }}
-              >
-                All
-              </button>
-              <button 
-                onClick={() => { setFilterStatus("pending"); setCurrentPage(0); }}
-                style={{ 
-                  padding: '8px 16px', 
-                  border: 'none', 
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  background: filterStatus === "pending" ? "linear-gradient(135deg, #f59e0b, #d97706)" : "transparent",
-                  color: "#fff",
-                  fontWeight: "600",
-                  fontSize: "0.9rem",
-                  transition: "all 0.3s"
-                }}
-              >
-                ⏳ Pending
-              </button>
-              <button 
-                onClick={() => { setFilterStatus("accepted"); setCurrentPage(0); }}
-                style={{ 
-                  padding: '8px 16px', 
-                  border: 'none', 
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  background: filterStatus === "accepted" ? "linear-gradient(135deg, #10b981, #059669)" : "transparent",
-                  color: "#fff",
-                  fontWeight: "600",
-                  fontSize: "0.9rem",
-                  transition: "all 0.3s"
-                }}
-              >
-                ✅ Accepted
-              </button>
-              <button 
-                onClick={() => { setFilterStatus("rejected"); setCurrentPage(0); }}
-                style={{ 
-                  padding: '8px 16px', 
-                  border: 'none', 
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  background: filterStatus === "rejected" ? "linear-gradient(135deg, #ef4444, #dc2626)" : "transparent",
-                  color: "#fff",
-                  fontWeight: "600",
-                  fontSize: "0.9rem",
-                  transition: "all 0.3s"
-                }}
-              >
-                ❌ Rejected
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-      <div style={{ marginTop: 20 }}>
-        {properties.length === 0 ? (
-          <div style={{
-            background: "rgba(102, 126, 234, 0.1)",
-            border: "2px dashed rgba(102, 126, 234, 0.3)",
-            borderRadius: "16px",
-            padding: "60px 40px",
-            textAlign: "center"
-          }}>
-            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🏠</div>
-            <p style={{ 
-              color: "#fff", 
-              fontSize: "1.3rem", 
-              fontWeight: "600",
-              margin: "0 0 8px 0"
-            }}>No properties loaded</p>
-            <p style={{
-              color: "#a0aec0",
-              fontSize: "1rem",
-              margin: 0
-            }}>Click "Load Properties" button to fetch properties from database</p>
-          </div>
-        ) : filteredProperties.length === 0 ? (
-          <div style={{
-            background: "rgba(102, 126, 234, 0.1)",
-            border: "2px dashed rgba(102, 126, 234, 0.3)",
-            borderRadius: "16px",
-            padding: "60px 40px",
-            textAlign: "center"
-          }}>
-            <div style={{ fontSize: "4rem", marginBottom: "16px" }}>🔍</div>
-            <p style={{ 
-              color: "#fff", 
-              fontSize: "1.3rem", 
-              fontWeight: "600",
-              margin: "0 0 8px 0"
-            }}>No properties found</p>
-            <p style={{
-              color: "#a0aec0",
-              fontSize: "1rem",
-              margin: 0
-            }}>No properties match the selected filter: {filterStatus}</p>
-          </div>
-        ) : (
-          <>
-            <div style={{ 
-              display: "grid", 
-              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-              gap: 24, 
-              marginBottom: 20 
-            }}>
-              {displayedProperties.map((p) => {
-                const imageUrl = (p.image_urls && p.image_urls.length > 0) 
-                  ? p.image_urls[0] 
-                  : (p.photos && p.photos.length > 0) 
-                    ? p.photos[0] 
-                    : "https://via.placeholder.com/300x200?text=No+Image";
-                
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => { setSelectedPropertyLocal(p); setShowModalLocal(true); }}
-                    style={{
-                      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
-                      border: "2px solid #667eea40",
-                      borderRadius: 16,
-                      cursor: "pointer",
-                      color: "#fff",
-                      transition: "all 0.3s",
-                      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
-                      overflow: "hidden"
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow = "0 20px 50px rgba(102, 126, 234, 0.6)";
-                      e.currentTarget.style.transform = "translateY(-8px)";
-                      e.currentTarget.style.borderColor = "#667eea";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.5)";
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.borderColor = "#667eea40";
-                    }}
-                  >
-                    <div style={{
-                      width: "100%",
-                      height: "200px",
-                      overflow: "hidden",
-                      position: "relative"
-                    }}>
-                      <img 
-                        src={imageUrl} 
-                        alt={p.title} 
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover"
-                        }}
-                        onError={(e) => { e.target.src = "https://via.placeholder.com/300x200?text=No+Image"; }}
-                      />
-                      <div style={{
-                        position: "absolute",
-                        top: 12,
-                        right: 12,
-                        background: p.status === "accepted" ? "rgba(16, 185, 129, 0.9)" : 
-                                   p.status === "rejected" ? "rgba(239, 68, 68, 0.9)" : 
-                                   "rgba(245, 158, 11, 0.9)",
-                        color: "#fff",
-                        padding: "6px 12px",
-                        borderRadius: "8px",
-                        fontSize: "0.75rem",
-                        fontWeight: "700",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.5px"
-                      }}>
-                        {p.status || "pending"}
-                      </div>
-                    </div>
-                    <div style={{ padding: 20 }}>
-                      <h3 style={{ 
-                        margin: "0 0 12px 0", 
-                        color: "#fff", 
-                        fontSize: "1.3rem",
-                        fontWeight: "700",
-                        lineHeight: "1.3"
-                      }}>{p.title}</h3>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ color: "#667eea", fontSize: "1.1rem" }}>📍</span>
-                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.city}</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ color: "#667eea", fontSize: "1.1rem" }}>🏠</span>
-                          <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.property_listing_type}</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ color: "#667eea", fontSize: "1.1rem" }}>💰</span>
-                          <span style={{ color: "#fff", fontSize: "1rem", fontWeight: "700" }}>₹{p.price}</span>
-                        </div>
-                        {p.bedrooms && (
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ color: "#667eea", fontSize: "1.1rem" }}>🛏️</span>
-                            <span style={{ color: "#a0aec0", fontSize: "0.9rem" }}>{p.bedrooms} Bedrooms</span>
-                          </div>
-                        )}
-                      </div>
-                      <div style={{
-                        marginTop: 16,
-                        paddingTop: 16,
-                        borderTop: "1px solid rgba(102, 126, 234, 0.2)",
-                        color: "#667eea",
-                        fontSize: "0.85rem",
-                        fontWeight: "600",
-                        textAlign: "center"
-                      }}>
-                        Click to view full details →
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: 16,
-              marginTop: 32,
-              background: "rgba(102, 126, 234, 0.08)",
-              padding: "20px",
-              borderRadius: "12px"
-            }}>
-              <button
-                onClick={goToPreviousPage}
-                disabled={currentPage === 0}
-                style={{
-                  padding: "12px 24px",
-                  background: currentPage === 0 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #667eea, #764ba2)",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: currentPage === 0 ? "not-allowed" : "pointer",
-                  fontSize: "1rem",
-                  fontWeight: "700",
-                  transition: "all 0.3s",
-                  boxShadow: currentPage === 0 ? "none" : "0 4px 15px rgba(102, 126, 234, 0.4)"
-                }}
-                onMouseEnter={(e) => {
-                  if (currentPage > 0) {
-                    e.target.style.transform = "translateY(-2px)";
-                    e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (currentPage > 0) {
-                    e.target.style.transform = "translateY(0)";
-                    e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
-                  }
-                }}
-              >
-                ← Previous
-              </button>
-              <span style={{ 
-                color: "#fff", 
-                fontSize: "1.1rem", 
-                fontWeight: "600",
-                background: "rgba(102, 126, 234, 0.15)",
-                padding: "10px 20px",
-                borderRadius: "8px",
-                border: "1px solid rgba(102, 126, 234, 0.3)"
-              }}>
-                Page {currentPage + 1} of {totalPages}
-              </span>
-              <button
-                onClick={goToNextPage}
-                disabled={currentPage === totalPages - 1}
-                style={{
-                  padding: "12px 24px",
-                  background: currentPage === totalPages - 1 ? "rgba(75, 85, 99, 0.4)" : "linear-gradient(135deg, #667eea, #764ba2)",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: currentPage === totalPages - 1 ? "not-allowed" : "pointer",
-                  fontSize: "1rem",
-                  fontWeight: "700",
-                  transition: "all 0.3s",
-                  boxShadow: currentPage === totalPages - 1 ? "none" : "0 4px 15px rgba(102, 126, 234, 0.4)"
-                }}
-                onMouseEnter={(e) => {
-                  if (currentPage < totalPages - 1) {
-                    e.target.style.transform = "translateY(-2px)";
-                    e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (currentPage < totalPages - 1) {
-                    e.target.style.transform = "translateY(0)";
-                    e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
-                  }
-                }}
-              >
-                Next →
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-      
-      {showModalLocal && selectedPropertyLocal && (
-        <PropertyDetailsModal
-          property={selectedPropertyLocal}
-          onClose={() => setShowModalLocal(false)}
-          onEdit={handleEdit}
-          onStatusChange={handleStatusChange}
-        />
-      )}
-    </div>
-  );
-}
-
-function SellersTab({ sellers, fetchSellers, updateStatus, setEditingProperty, setShowModal }) {
+function SellersTabLocal({ sellers, fetchSellers, updateStatus, setEditingProperty, setShowModal }) {
   const [currentPage, setCurrentPage] = React.useState(0);
   const [selectedSeller, setSelectedSeller] = React.useState(null);
   const [showModalLocal, setShowModalLocal] = React.useState(false);
@@ -2332,7 +1346,7 @@ function SellerDetailsModal({ seller, onClose, onEdit, onStatusChange }) {
   );
 }
 
-function LeasesTab({ leases, fetchLeases, updateStatus, setEditingProperty, setShowModal }) {
+function LeasesTabLocal({ leases, fetchLeases, updateStatus, setEditingProperty, setShowModal }) {
   const [currentPage, setCurrentPage] = React.useState(0);
   const [selectedLease, setSelectedLease] = React.useState(null);
   const [showModalLocal, setShowModalLocal] = React.useState(false);
@@ -3057,7 +2071,7 @@ function LeaseDetailsModal({ lease, onClose, onEdit, onStatusChange }) {
   );
 }
 
-function RentalsTab({ rentals, fetchRentals, updateStatus, setEditingProperty, setShowModal }) {
+function RentalsTabLocal({ rentals, fetchRentals, updateStatus, setEditingProperty, setShowModal }) {
   const [currentPage, setCurrentPage] = React.useState(0);
   const [selectedRental, setSelectedRental] = React.useState(null);
   const [showModalLocal, setShowModalLocal] = React.useState(false);
@@ -4029,7 +3043,7 @@ function ListingTab({ title, data, fetchData, updateStatus, loading, setEditingP
   );
 }
 
-function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError, appointmentsCount }) {
+function AppointmentsTabLocal({ appointments, fetchAppointments, loading, fetchError, appointmentsCount }) {
   const [currentPage, setCurrentPage] = React.useState(0);
   const [filter, setFilter] = React.useState("all"); // "all", "confirmed", or "pending"
   const itemsPerPage = 8;
@@ -4123,6 +3137,41 @@ function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError,
              // Handle notification if userId was found
              if (userId) {
                 console.log("User ID found for notification:", userId);
+                
+                // Create in-app notification for appointment status update
+                try {
+                  const isConfirmed = newStatus === "confirmed" || newStatus === "accepted";
+                  const notifType = isConfirmed ? "appointment_confirmed" : "appointment_rejected";
+                  const notifTitle = isConfirmed ? "Appointment Confirmed!" : "Appointment Rejected";
+                  const propertyTitle = aptData.property_title || "Property";
+                  const notifMessage = isConfirmed 
+                    ? `Your appointment for "${propertyTitle}" has been confirmed for ${updateData.appointment_date || aptData.appointment_date} at ${updateData.appointment_time || aptData.appointment_time}.`
+                    : `Your appointment request for "${propertyTitle}" has been rejected. Reason: ${rejectionReason}`;
+
+                  const { error: notifError } = await supabase
+                    .from("notifications")
+                    .insert({
+                      user_id: userId,
+                      type: notifType,
+                      title: notifTitle,
+                      message: notifMessage,
+                      property_id: aptData.property_id,
+                      read: false,
+                      created_at: new Date().toISOString()
+                    });
+                  
+                  if (notifError) console.error("Error creating appointment notification:", notifError);
+
+                  // Also create a message for the user
+                  await supabase.from("messages").insert({
+                    user_id: userId,
+                    subject: notifTitle,
+                    message: notifMessage,
+                    created_at: new Date().toISOString()
+                  });
+                } catch (notifErr) {
+                  console.error("Failed to create in-app notification:", notifErr);
+                }
              } else {
                 console.warn("Could not find user_id for appointment notification (no ID and email lookup failed)");
              }
@@ -4586,7 +3635,7 @@ function AppointmentsTab({ appointments, fetchAppointments, loading, fetchError,
   );
 }
 
-function FeedbackTab({ feedback, fetchFeedback, deleteFeedback, loading }) {
+function FeedbackTabLocal({ feedback, fetchFeedback, deleteFeedback, loading }) {
   const [currentPage, setCurrentPage] = React.useState(0);
   const itemsPerPage = 5;
   
@@ -5048,7 +4097,7 @@ function PropertyDetailsModal({ property, onClose, onEdit, onStatusChange }) {
   );
 }
 
-function PropertyModal({ property, onClose }) {
+function PropertyModalLegacy({ property, onClose }) {
   if (!property) return null;
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000 }}>

@@ -107,6 +107,16 @@ export async function fetchProperties() {
       return now > expiryDate;
     };
 
+    // Helper to normalize listing type coming from DB
+    const normalizeListingType = (rawType) => {
+      const t = (rawType || "").toLowerCase().trim();
+      if (t === "sell") return "sale";
+      if (t === "sale") return "sale";
+      if (t === "lease") return "lease";
+      if (t === "rent") return "rent";
+      return t || "rent";
+    };
+
     // Filter to show ONLY properties that have status "approved" AND are NOT expired
     // This ensures only active, approved properties are visible to all users
     const visibleProperties = (data || []).filter(property => 
@@ -120,6 +130,7 @@ export async function fetchProperties() {
       const photos = getArray(property.photos);
       const displayImage = images[0] || photos[0] || "https://via.placeholder.com/400";
       const allPhotos = images.length > 0 ? images : (photos.length > 0 ? photos : [displayImage]);
+      const listingType = normalizeListingType(property.property_listing_type);
 
       return {
         id: property.id,
@@ -132,7 +143,7 @@ export async function fetchProperties() {
         photos: allPhotos,
         bedrooms: property.bedrooms || "N/A",
         bathrooms: property.bathrooms || "N/A",
-        type: property.property_listing_type?.toLowerCase() || "rent", // Lease, Sell, Rent -> rent, sale, rent
+        type: listingType,
         ownerType: property.owner_type || "owner",
         bachelorFriendly: property.bachelor_friendly || "family",
         furnished: property.furnished || "non",
@@ -211,6 +222,7 @@ export async function fetchPropertyById(id) {
     const photos = getArray(data.photos);
     const displayImage = images[0] || photos[0] || "https://via.placeholder.com/400";
     const allPhotos = images.length > 0 ? images : (photos.length > 0 ? photos : [displayImage]);
+    const listingType = normalizeListingType(data.property_listing_type);
 
     // Map to frontend format
     return {
@@ -224,7 +236,7 @@ export async function fetchPropertyById(id) {
       photos: allPhotos,
       bedrooms: data.bedrooms || "N/A",
       bathrooms: data.bathrooms || "N/A",
-      type: data.property_listing_type?.toLowerCase() || "rent",
+      type: listingType,
       ownerType: data.owner_type || "owner",
       bachelorFriendly: data.bachelor_friendly || "family",
       furnished: data.furnished || "non",
@@ -245,6 +257,8 @@ export async function fetchPropertyById(id) {
       nearbyPlaces: data.nearby_places || "",
       createdAt: data.created_at,
       packageName: data.package_name || "Silver", // Default to Silver if not specified
+      user_id: data.user_id || data.created_by,
+      created_by: data.created_by
     };
   } catch (error) {
     console.error("Error in fetchPropertyById:", error);

@@ -217,6 +217,17 @@ export default function NotificationsPage() {
       return "appointment_rejected";
     }
 
+    if (
+      type === "listing_expiry" ||
+      type === "appointment_reminder" ||
+      title.includes("reminder") ||
+      title.includes("expiring") ||
+      message.includes("reminder") ||
+      message.includes("expiring")
+    ) {
+      return "reminders";
+    }
+
     return "other";
   };
 
@@ -350,7 +361,7 @@ export default function NotificationsPage() {
               <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
             </Link>
             <nav className="header-links">
-              <Link to="/dashboard" className="header-link">Home</Link>
+              <Link to="/dashboard" className="header-link">Dashboard</Link>
               <Link to="/properties" className="header-link">Properties</Link>
               <Link to="/contact" className="header-link">Contact</Link>
               <Link to="/about" className="header-link">About Us</Link>
@@ -403,8 +414,18 @@ export default function NotificationsPage() {
         </header>
 
         {/* Notifications Content */}
-        <div className="dashboard-page-content">
-          <div className="section-header">
+        <div className="dashboard-page-content" style={{ padding: '16px 32px 32px' }}>
+          <div 
+            className="section-header"
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '16px',
+              padding: 0,
+              background: 'transparent'
+            }}
+          >
             <h2 className="section-title">Notifications</h2>
             <button 
               onClick={markAllAsRead}
@@ -423,6 +444,7 @@ export default function NotificationsPage() {
           <div style={{ marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {[
               { key: "all", label: "All" },
+              { key: "reminders", label: "Reminders" },
               { key: "appointment_accepted", label: "Appointment Accepted" },
               { key: "appointment_rejected", label: "Appointment Rejected" },
               { key: "property_approved", label: "Property Accepted" },

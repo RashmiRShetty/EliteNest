@@ -113,6 +113,9 @@ export default function MyListingsPage() {
   const [repostProperty, setRepostProperty] = useState(null);
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [viewDetailsPackage, setViewDetailsPackage] = useState(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [showPackageSelection, setShowPackageSelection] = useState(false);
 
   const packages = [
     {
@@ -122,7 +125,6 @@ export default function MyListingsPage() {
       period: '',
       validityDays: 15,
       features: [
-        'Standard Listing',
         'Listed for 15 Days',
         '5 Photos Limit',
         'Basic Support'
@@ -312,18 +314,93 @@ export default function MyListingsPage() {
 
   const confirmPostNow = async () => {
     if (!reviewProperty) return;
-    const propertyId = reviewProperty.id;
+    setShowPackageSelection(true);
+  };
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const getPackageAmountPaise = (pkg) => {
+    const priceStr = pkg?.price || "0";
+    const numeric = parseInt(String(priceStr).replace(/[^\d]/g, ""), 10) || 0;
+    return numeric * 100;
+  };
+
+  const startRazorpayPayment = async (targetProperty, pkg) => {
+    if (!pkg || !targetProperty) return;
+    const key = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_NgwEwXk1hnhpL6";
+    setPaymentProcessing(true);
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+      setPaymentProcessing(false);
+      alert("Unable to load Razorpay.");
+      return;
+    }
+    const amount = getPackageAmountPaise(pkg);
+    const options = {
+      key,
+      amount,
+      currency: "INR",
+      name: "Elite Nest",
+      description: `${pkg.name} Listing`,
+      handler: function (response) {
+        setPaymentProcessing(false);
+        setShowPaymentModal(false);
+        completePostProcess(targetProperty, pkg);
+      },
+      prefill: {
+        name: targetProperty.contact_name || "",
+        email: targetProperty.contact_email || "",
+        contact: targetProperty.contact_phone || ""
+      },
+      theme: { color: "#d97706" }
+    };
+    const rzp = new window.Razorpay(options);
+    rzp.on("payment.failed", function () {
+      setPaymentProcessing(false);
+      alert("Payment failed.");
+    });
+    rzp.open();
+  };
+
+  const completePostProcess = async (targetProperty, pkg) => {
+    const propertyId = targetProperty.id;
+    const validityDays = pkg.validityDays;
+    const now = new Date();
+    const expiryDate = new Date();
+    expiryDate.setDate(now.getDate() + validityDays);
 
     try {
       const { error } = await supabase
         .from("properties")
-        .update({ status: "approved" })
+        .update({ 
+          status: "approved",
+          package_name: pkg.name,
+          created_at: now.toISOString() // Reset creation date for visibility
+          // expiry_date: expiryDate.toISOString() // TODO: Uncomment after adding column
+        })
         .eq("id", propertyId);
 
       if (error) throw error;
 
       setProperties(prev => prev.map(p => 
-        p.id === propertyId ? { ...p, status: "approved" } : p
+        p.id === propertyId ? { 
+          ...p, 
+          status: "approved", 
+          package_name: pkg.name,
+          created_at: now.toISOString()
+        } : p
       ));
       
       setStats(prev => ({
@@ -331,12 +408,18 @@ export default function MyListingsPage() {
         active: prev.active + 1
       }));
       
-      alert("Property posted successfully! It is now visible to the public.");
-      setReviewProperty(null);
+      alert(`Property posted successfully with ${pkg.name} package! It is now visible to the public.`);
+      closeModals();
     } catch (error) {
       console.error("Error posting property:", error);
       alert("Failed to post property. Please try again.");
     }
+  };
+
+  const onConfirmPayment = async () => {
+    const targetProperty = reviewProperty || repostProperty;
+    if (!targetProperty || !selectedPackage) return;
+    await startRazorpayPayment(targetProperty, selectedPackage);
   };
 
   const handleEditResend = () => {
@@ -370,46 +453,132 @@ export default function MyListingsPage() {
   const handleRepostClick = (property) => {
     setRepostProperty(property);
     setSelectedPackage(null);
+    setShowPackageSelection(true);
   };
 
-  const handleRepostConfirm = async () => {
-    if (!repostProperty || !selectedPackage) return;
-    
-    // Simulate payment
-    alert(`Processing payment of ${selectedPackage.price} for ${selectedPackage.name} package...`);
-    
-    const validityDays = selectedPackage.validityDays;
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + validityDays);
-    
-    try {
-      const now = new Date().toISOString();
-      const { error } = await supabase
-        .from("properties")
-        .update({ 
-          status: "approved", 
-          created_at: now,
-          package_name: selectedPackage.name
-        })
-        .eq("id", repostProperty.id);
+  const closeModals = () => {
+    setReviewProperty(null);
+    setRepostProperty(null);
+    setSelectedPackage(null);
+    setViewDetailsPackage(null);
+    setShowPaymentModal(false);
+    setShowPackageSelection(false);
+  };
 
-      if (error) throw error;
-      
-      alert(`Property successfully reposted with ${selectedPackage.name} package!`);
-      setRepostProperty(null);
-      // Update local state
-      setProperties(prev => prev.map(p => 
-        p.id === repostProperty.id ? { 
-          ...p, 
-          status: "approved", 
-          created_at: now,
-          package_name: selectedPackage.name
-        } : p
-      ));
-    } catch (error) {
-      console.error("Error reposting:", error);
-      alert("Failed to repost property.");
-    }
+  const PackageSelectionModal = ({ targetProperty }) => {
+    if (!targetProperty) return null;
+    
+    return (
+      <div className="payment-modal-overlay" onClick={closeModals} style={{ zIndex: 1100 }}>
+        <div className="payment-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px' }}>
+          <div className="payment-modal-header">
+            <h2>Select a Listing Package</h2>
+            <button onClick={closeModals} className="close-btn">&times;</button>
+          </div>
+          
+          <div style={{ padding: '0 32px' }}>
+            <p style={{ margin: "20px 0", color: "var(--text-secondary)" }}>
+              Choose the best plan to post <strong>{targetProperty.title}</strong>.
+            </p>
+          </div>
+
+          <div className="payment-plans-container" style={{ padding: '0 32px 32px 32px' }}>
+            {packages.map((pkg) => (
+              <div 
+                key={pkg.id} 
+                className={`plan-card ${pkg.id} ${selectedPackage?.id === pkg.id ? 'selected' : ''}`}
+                onClick={() => setSelectedPackage(pkg)}
+                style={{ cursor: 'pointer' }}
+              >
+                {pkg.isPopular && <span className="popular-badge">Most Popular</span>}
+                
+                <div className="plan-header">
+                  <div className="plan-icon-wrapper">
+                    {pkg.id === 'silver' && <Shield />}
+                    {pkg.id === 'gold' && <Crown />}
+                    {pkg.id === 'platinum' && <Sparkles />}
+                  </div>
+                </div>
+
+                <div className="plan-name">{pkg.name}</div>
+                
+                <div className="plan-price">
+                  {pkg.price}
+                </div>
+
+                <button 
+                  type="button" 
+                  className="view-details-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setViewDetailsPackage(pkg);
+                  }}
+                >
+                  View Details
+                </button>
+                
+                <button 
+                  type="button"
+                  className="select-plan-btn"
+                >
+                  {selectedPackage?.id === pkg.id ? 'Selected' : 'Select Plan'}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="payment-modal-footer" style={{ padding: '24px 32px', borderTop: '1px solid var(--border-subtle)' }}>
+            <button onClick={closeModals} className="btn-secondary" style={{ marginRight: '16px' }}>Cancel</button>
+            <button 
+              onClick={() => setShowPaymentModal(true)}
+              disabled={!selectedPackage}
+              className="btn-primary"
+              style={{ 
+                background: selectedPackage ? "var(--primary-accent)" : "#374151",
+                color: selectedPackage ? "#000" : "#9ca3af"
+              }}
+            >
+              Proceed to Payment
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const PaymentModal = () => {
+    const targetProperty = reviewProperty || repostProperty;
+    if (!targetProperty || !selectedPackage || !showPaymentModal) return null;
+
+    return (
+      <div className="payment-modal-overlay" style={{ zIndex: 1200 }}>
+        <div className="payment-modal" style={{ maxWidth: '520px', height: 'auto' }}>
+          <div className="payment-modal-header">
+            <h2>Payment Required</h2>
+            <button onClick={() => setShowPaymentModal(false)} className="close-btn">×</button>
+          </div>
+          <div style={{ padding: '24px' }}>
+            <div style={{ fontSize: '18px', marginBottom: '8px', color: 'var(--text-secondary)' }}>
+              {selectedPackage.name} Package for {targetProperty.title}
+            </div>
+            <div style={{ 
+              fontSize: '32px', 
+              fontWeight: 'bold', 
+              marginBottom: '24px',
+              color: 'var(--text-primary)'
+            }}>
+              {selectedPackage.price}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button onClick={() => setShowPaymentModal(false)} className="btn-secondary">Back</button>
+              <button onClick={onConfirmPayment} className="btn-primary" disabled={paymentProcessing}>
+                {paymentProcessing ? "Processing..." : "Pay & Post Now"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
 
@@ -444,6 +613,22 @@ export default function MyListingsPage() {
     return now > expiryDate;
   };
 
+  const getExpiryRemainingDays = (property) => {
+    if (property.status !== "approved") return null;
+    const createdAt = new Date(property.created_at);
+    const now = new Date();
+    const pkg = (property.package_name || "Silver").toLowerCase();
+    let validityDays = 15;
+    if (pkg === "gold") validityDays = 30;
+    else if (pkg === "platinum") validityDays = 45;
+    const expiryDate = new Date(createdAt);
+    expiryDate.setDate(createdAt.getDate() + validityDays);
+    
+    const diffTime = expiryDate - now;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
   const filteredProperties = properties
     .filter(property => {
       const searchLower = searchQuery.toLowerCase();
@@ -457,7 +642,7 @@ export default function MyListingsPage() {
       if (filter === "all") return true;
       if (filter === "active") return property.status === "approved" && !isPropertyExpired(property);
       if (filter === "pending") return property.status === "pending";
-      if (filter === "sold") return isPropertyExpired(property);
+      if (filter === "sold") return property.status === "approved" && isPropertyExpired(property);
       
       return true;
     })
@@ -565,7 +750,7 @@ export default function MyListingsPage() {
               <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
             </Link>
             <nav className="header-links">
-              <Link to="/dashboard" className="header-link">Home</Link>
+              <Link to="/dashboard" className="header-link">Dashboard</Link>
               <Link to="/properties" className="header-link">Properties</Link>
               <Link to="/contact" className="header-link">Contact</Link>
               <Link to="/about" className="header-link">About Us</Link>
@@ -756,6 +941,33 @@ export default function MyListingsPage() {
                           {property.city || property.address || "Location N/A"}
                         </div>
 
+                        {/* Expiry Reminder */}
+                        {(() => {
+                          const remainingDays = getExpiryRemainingDays(property);
+                          if (remainingDays !== null && remainingDays <= 3 && remainingDays > 0) {
+                            return (
+                              <div style={{ 
+                                padding: '10px 14px', 
+                                backgroundColor: 'rgba(245, 158, 11, 0.15)', 
+                                borderRadius: '8px', 
+                                border: '1px solid #f59e0b',
+                                color: '#f59e0b',
+                                fontSize: '0.85rem',
+                                marginBottom: '16px',
+                                marginTop: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                fontWeight: '600'
+                              }}>
+                                <Icons.AlertCircle size={18} />
+                                <span>Reminder: Your {property.package_name || 'listing'} expires in {remainingDays} day{remainingDays !== 1 ? 's' : ''}.</span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+
                         {property.status === 'rejected' && property.rejection_reason && (
                           <div style={{ 
                             padding: '8px 12px', 
@@ -822,7 +1034,11 @@ export default function MyListingsPage() {
                               <Icons.TrendingUp size={16} /> Post Now
                             </button>
                           ) : (
-                            <Link to={`/properties/${property.id}`} className="view-btn">
+                            <Link 
+                              to={`/properties/${property.id}`} 
+                              state={{ property }} 
+                              className="view-btn"
+                            >
                               <Icons.Eye size={16} /> View
                             </Link>
                           )}
@@ -996,160 +1212,65 @@ export default function MyListingsPage() {
             resetStatus={true} // Always reset status to pending on edit
           />
         )}
-          {repostProperty && (
-            <div className="payment-modal-overlay" onClick={() => setRepostProperty(null)}>
-              <div className="payment-modal" onClick={e => e.stopPropagation()}>
-                <div className="payment-modal-header">
-                  <h2>Repost Property</h2>
-                  <button 
-                    onClick={() => setRepostProperty(null)}
-                    className="close-btn"
-                  >
-                    &times;
-                  </button>
+
+        {showPackageSelection && (
+          <PackageSelectionModal targetProperty={reviewProperty || repostProperty} />
+        )}
+
+        {showPaymentModal && <PaymentModal />}
+
+        {/* Package Details Modal */}
+        {viewDetailsPackage && (
+          <div className="payment-modal-overlay" style={{ zIndex: 3000 }}>
+            <div className="payment-modal" style={{ maxWidth: '500px', height: 'auto', maxHeight: '90vh' }}>
+              <div className="payment-modal-header">
+                <h2>{viewDetailsPackage.name} Package</h2>
+                <button onClick={() => setViewDetailsPackage(null)} className="close-btn">&times;</button>
+              </div>
+              <div style={{ padding: '24px' }}>
+                <div style={{ 
+                  fontSize: '32px', 
+                  fontWeight: 'bold', 
+                  marginBottom: '8px',
+                  color: 'var(--text-primary, #fff)'
+                }}>
+                  {viewDetailsPackage.price}
+                </div>
+                <div style={{ 
+                  color: 'var(--text-secondary, #9ca3af)', 
+                  marginBottom: '24px' 
+                }}>
+                  {viewDetailsPackage.period}
                 </div>
                 
-                <div style={{ padding: '0 32px' }}>
-                  <p style={{ margin: "20px 0", color: "var(--text-secondary)" }}>
-                    Select a package to renew <strong>{repostProperty.title}</strong>.
-                  </p>
-                </div>
-
-                <div className="payment-plans-container">
-                  {packages.map((pkg) => (
-                    <div 
-                      key={pkg.id} 
-                      className={`plan-card ${pkg.id} ${selectedPackage?.id === pkg.id ? 'selected' : ''}`}
-                      onClick={() => setSelectedPackage(pkg)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      {pkg.isPopular && <span className="popular-badge">Most Popular</span>}
-                      
-                      <div className="plan-header">
-                        <div className="plan-icon-wrapper">
-                          {pkg.id === 'silver' && <Shield />}
-                          {pkg.id === 'gold' && <Crown />}
-                          {pkg.id === 'platinum' && <Sparkles />}
-                        </div>
-                      </div>
-
-                      <div className="plan-name">{pkg.name}</div>
-                      
-                      <div className="plan-price">
-                        {pkg.price}
-                        {pkg.period && <span>{pkg.period}</span>}
-                      </div>
-
-                      <button 
-                        type="button" 
-                        className="view-details-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewDetailsPackage(pkg);
-                        }}
-                      >
-                        View Details
-                      </button>
-                      
-                      <button 
-                        type="button"
-                        className="select-plan-btn"
-                      >
-                        {selectedPackage?.id === pkg.id ? 'Selected' : 'Select Plan'}
-                      </button>
-                    </div>
+                <ul className="plan-features" style={{ margin: 0 }}>
+                  {viewDetailsPackage.features.map((feature, index) => (
+                    <li key={index} style={{ marginBottom: '12px' }}>
+                      <Check size={20} style={{ marginRight: '12px', color: 'var(--success-color, #10b981)' }} />
+                      {feature}
+                    </li>
                   ))}
-                </div>
+                </ul>
 
-                <div className="payment-modal-footer">
-                  <button 
-                    onClick={() => setRepostProperty(null)}
-                    style={{ 
-                      padding: "12px 24px", 
-                      background: "transparent", 
-                      color: "var(--text-secondary)", 
-                      border: "none", 
-                      borderRadius: "8px", 
-                      cursor: "pointer",
-                      marginRight: "16px",
-                      fontWeight: "600"
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={handleRepostConfirm}
-                    disabled={!selectedPackage}
-                    style={{ 
-                      padding: "12px 24px", 
-                      background: selectedPackage ? "var(--secondary-color, #d97706)" : "#374151", 
-                      color: selectedPackage ? "#fff" : "#9ca3af", 
-                      border: "none", 
-                      borderRadius: "8px", 
-                      fontWeight: "bold",
-                      cursor: selectedPackage ? "pointer" : "not-allowed",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    Proceed to Payment
-                  </button>
-                </div>
+                <button 
+                  onClick={() => {
+                    setSelectedPackage(viewDetailsPackage);
+                    setViewDetailsPackage(null);
+                  }}
+                  className="select-plan-btn"
+                  style={{ 
+                    marginTop: '32px',
+                    background: 'var(--primary-accent, #d97706)',
+                    color: '#000',
+                    border: 'none'
+                  }}
+                >
+                  Select This Plan
+                </button>
               </div>
             </div>
-          )}
-
-          {/* Package Details Modal */}
-          {viewDetailsPackage && (
-            <div className="payment-modal-overlay" style={{ zIndex: 3000 }}>
-              <div className="payment-modal" style={{ maxWidth: '500px', height: 'auto', maxHeight: '90vh' }}>
-                <div className="payment-modal-header">
-                  <h2>{viewDetailsPackage.name} Package</h2>
-                  <button onClick={() => setViewDetailsPackage(null)} className="close-btn">&times;</button>
-                </div>
-                <div style={{ padding: '24px' }}>
-                  <div style={{ 
-                    fontSize: '32px', 
-                    fontWeight: 'bold', 
-                    marginBottom: '8px',
-                    color: 'var(--text-primary, #fff)'
-                  }}>
-                    {viewDetailsPackage.price}
-                  </div>
-                  <div style={{ 
-                    color: 'var(--text-secondary, #9ca3af)', 
-                    marginBottom: '24px' 
-                  }}>
-                    {viewDetailsPackage.period}
-                  </div>
-                  
-                  <ul className="plan-features" style={{ margin: 0 }}>
-                    {viewDetailsPackage.features.map((feature, index) => (
-                      <li key={index} style={{ marginBottom: '12px' }}>
-                        <Check size={20} style={{ marginRight: '12px', color: 'var(--success-color, #10b981)' }} />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <button 
-                    onClick={() => {
-                      setSelectedPackage(viewDetailsPackage);
-                      setViewDetailsPackage(null);
-                    }}
-                    className="select-plan-btn"
-                    style={{ 
-                      marginTop: '32px',
-                      background: 'var(--primary-accent, #d97706)',
-                      color: '#000',
-                      border: 'none'
-                    }}
-                  >
-                    Select This Plan
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
+        )}
 
       </main>
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, 
   Heart, 
@@ -24,7 +24,11 @@ import {
   MessageCircle,
   ClipboardList,
   Plus,
-  X
+  X,
+  CarFront,
+  DoorOpen,
+  Sofa,
+  Clock
 } from 'lucide-react';
 import { fetchPropertyById } from './utils/properties';
 import { supabase } from './supabase';
@@ -58,17 +62,21 @@ const Icons = {
   Settings: () => <Settings size={20} />,
   LogOut: () => <LogOut size={20} />,
   Bell: () => <Bell size={20} />,
-  Search: () => <Search size={20} />
+  Search: () => <Search size={20} />,
+  Clock: (props) => <Clock size={20} {...props} />
 };
 
 const PropertyDetailsPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const stateProperty = location.state && location.state.property ? location.state.property : null;
   const [user, setUser] = useState(null);
-  const [property, setProperty] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [property, setProperty] = useState(stateProperty);
+  const [loading, setLoading] = useState(!stateProperty);
   const [error, setError] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [showMap, setShowMap] = useState(false);
@@ -86,9 +94,12 @@ const PropertyDetailsPage = () => {
     name: '',
     email: '',
     phone: '',
-    dates: [], // Will store selected date strings
+    slots: [], // Array of { date, time } objects
     message: ''
   });
+
+  const [selectedDateForTime, setSelectedDateForTime] = useState(null);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
   // Helper to get date constraints based on package and posting date
   const getDateConstraints = () => {
@@ -137,22 +148,29 @@ const PropertyDetailsPage = () => {
   const maxSelectableDate = constraints.max;
 
   const handleDateChange = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    const currentDates = [...bookingForm.dates];
-    
-    if (currentDates.includes(dateStr)) {
-      // Remove if already selected
-      setBookingForm({
-        ...bookingForm,
-        dates: currentDates.filter(d => d !== dateStr)
-      });
-    } else if (currentDates.length < 4) {
-      // Add if less than 4 selected
-      setBookingForm({
-        ...bookingForm,
-        dates: [...currentDates, dateStr].sort()
-      });
+    // Just set the date being picked, wait for time
+    setSelectedDateForTime(date);
+  };
+
+  const handleTimeSlotSelect = (time) => {
+    if (!selectedDateForTime) return;
+
+    const dateStr = selectedDateForTime.toISOString().split('T')[0];
+    const newSlots = [...bookingForm.slots];
+
+    if (newSlots.length < 4) {
+      newSlots.push({ date: dateStr, time: time });
+      setBookingForm({ ...bookingForm, slots: newSlots });
+      // Reset after selection to allow picking another slot
+      setSelectedDateForTime(null);
+    } else {
+      alert("You can select exactly 4 appointment slots.");
     }
+  };
+
+  const removeSlot = (index) => {
+    const newSlots = bookingForm.slots.filter((_, i) => i !== index);
+    setBookingForm({ ...bookingForm, slots: newSlots });
   };
 
   const updateDateOption = (index, field, value) => {
@@ -213,6 +231,13 @@ const PropertyDetailsPage = () => {
   useEffect(() => {
     const loadProperty = async () => {
       try {
+        // If property was passed via navigation state, use it and skip fetch
+        if (stateProperty) {
+          setProperty(stateProperty);
+          setLoading(false);
+          return;
+        }
+
         setLoading(true);
         const data = await fetchPropertyById(id);
         if (data) {
@@ -221,7 +246,7 @@ const PropertyDetailsPage = () => {
           // Check if property is in wishlist
           const { data: { user: currentUser } } = await supabase.auth.getUser();
           if (currentUser) {
-            const { data: favorite, error } = await supabase
+            const { data: favorite } = await supabase
               .from('wishlist')
               .select('*')
               .eq('user_id', currentUser.id)
@@ -235,14 +260,18 @@ const PropertyDetailsPage = () => {
         }
       } catch (err) {
         console.error("Error loading property:", err);
-        setError("Failed to load property details");
+        if (!stateProperty) {
+          setError("Failed to load property details");
+        }
       } finally {
-        setLoading(false);
+        if (!stateProperty) {
+          setLoading(false);
+        }
       }
     };
 
     loadProperty();
-  }, [id]);
+  }, [id, stateProperty]);
 
   const toggleFavorite = async () => {
     if (!user) {
@@ -297,66 +326,13 @@ const PropertyDetailsPage = () => {
     navigate("/", { replace: true });
   };
 
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      if (window.Razorpay) {
-        resolve(true);
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
-
-  const getAppointmentAmountPaise = () => {
-    return 49900;
-  };
-
   const createBooking = async (bookingData) => {
     const { error: bookingError } = await supabase
       .from("bookings")
       .insert(bookingData);
     if (bookingError) throw bookingError;
     alert("Viewing request sent successfully! We will contact you shortly.");
-    setBookingForm({ name: '', email: '', phone: '', dates: [], message: '' });
-  };
-
-  const startRazorpayPayment = async (bookingData) => {
-    const key = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_NgwEwXk1hnhpL6";
-    const loaded = await loadRazorpayScript();
-    if (!loaded) {
-      alert("Unable to load Razorpay.");
-      return;
-    }
-    const amount = getAppointmentAmountPaise();
-    const options = {
-      key,
-      amount,
-      currency: "INR",
-      name: "Elite Nest",
-      description: "Appointment Booking",
-      handler: async function () {
-        try {
-          await createBooking(bookingData);
-        } catch (err) {
-          alert("Failed to book appointment.");
-        }
-      },
-      prefill: {
-        name: bookingForm.name || "",
-        email: bookingForm.email || "",
-        contact: bookingForm.phone || ""
-      },
-      theme: { color: "#d97706" }
-    };
-    const rzp = new window.Razorpay(options);
-    rzp.on("payment.failed", function () {
-      alert("Payment failed.");
-    });
-    rzp.open();
+    setBookingForm({ name: '', email: '', phone: '', slots: [], message: '' });
   };
 
   const handleBookViewing = async (e) => {
@@ -367,20 +343,33 @@ const PropertyDetailsPage = () => {
       return;
     }
 
+    // Validation: Don't allow person to book appointment who posted it
+    if (property.user_id === user.id || property.created_by === user.id) {
+      alert("You cannot book a viewing for your own property.");
+      return;
+    }
+
     try {
-      const minRequired = constraints.isNearExpiry ? 1 : 4;
-      if (bookingForm.dates.length < minRequired) {
-        alert(constraints.isNearExpiry 
-          ? "Please select at least 1 date from the calendar." 
-          : "Please select exactly 4 dates from the calendar.");
-        return;
-      }
-      if (!constraints.isNearExpiry && bookingForm.dates.length !== 4) {
-        alert("Please select exactly 4 dates from the calendar.");
-        return;
+      if (!constraints.isNearExpiry) {
+        if (bookingForm.slots.length < 4) {
+          alert("Please select exactly 4 preferred appointment slots.");
+          return;
+        }
+      } else {
+        if (bookingForm.slots.length < 1) {
+          alert("Please select at least 1 preferred date from the calendar.");
+          return;
+        }
       }
 
-      const formattedDates = bookingForm.dates.map(d => ({ date: d }));
+      const formattedDates = bookingForm.slots.map(s => ({ date: s.date, time: s.time }));
+
+      const userName =
+        user.user_metadata?.full_name ||
+        user.email?.split("@")[0] ||
+        bookingForm.name;
+
+      const userEmail = user.email || bookingForm.email;
 
       const bookingData = {
         user_id: user.id,
@@ -388,17 +377,17 @@ const PropertyDetailsPage = () => {
         property_title: property.title,
         property_location: property.location || property.address || "",
         property_image: property.img || (property.image_urls && property.image_urls[0]) || "",
-        user_name: bookingForm.name,
-        user_email: bookingForm.email,
+        user_name: userName,
+        user_email: userEmail,
         mobile_number: bookingForm.phone,
         proposed_dates: formattedDates,
         message: bookingForm.message,
-        appointment_date: bookingForm.dates[0] || new Date().toISOString().split('T')[0],
-        appointment_time: '00:00:00',
+        appointment_date: bookingForm.slots[0].date,
+        appointment_time: bookingForm.slots[0].time,
         status: 'pending'
       };
 
-      await startRazorpayPayment(bookingData);
+      await createBooking(bookingData);
     } catch (error) {
       console.error("Final booking viewing error:", error);
       alert(`Failed to send viewing request: ${error.message || "Please try again"}`);
@@ -445,6 +434,9 @@ const PropertyDetailsPage = () => {
     ? property.photos 
     : [property.img]; // Fallback to single image
 
+  const maxThumbnailCount = 7;
+  const extraThumbnailCount = Math.max(0, images.length - maxThumbnailCount);
+
   const nextImage = () => {
     setActiveImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
   };
@@ -455,8 +447,109 @@ const PropertyDetailsPage = () => {
 
   const greeting = user ? (user.user_metadata?.full_name || user.email.split("@")[0]) : "Guest";
 
+  const listingLabel =
+    property.type === "sale"
+      ? "For Sale"
+      : property.type === "rent"
+      ? "For Rent"
+      : property.type
+      ? property.type.charAt(0).toUpperCase() + property.type.slice(1)
+      : null;
+
+  const featureItems = [
+    "Status: Approved",
+    listingLabel && `Listing Type: ${listingLabel}`,
+    property.area && `Area: ${property.area} sq ft`,
+    property.bedrooms && `Bedrooms: ${property.bedrooms}`,
+    property.bathrooms && `Bathrooms: ${property.bathrooms}`,
+    property.deposit ? `Deposit: ₹${property.deposit}` : null,
+    property.minDuration && `Minimum Duration: ${property.minDuration} months`,
+    typeof property.parking === "string" && `Parking: ${property.parking}`,
+    typeof property.balcony === "string" && `Balcony: ${property.balcony}`,
+    property.furnished && property.furnished !== "Unfurnished" ? `${property.furnished} Furnished` : null,
+    ...(property.amenities || []),
+  ].filter(Boolean);
+
+  const getAmenityIcon = (amenity) => {
+    const label = String(amenity).toLowerCase();
+
+    if (label.includes("bedroom")) {
+      return <BedDouble size={28} className="pd-amenity-icon" />;
+    }
+    if (label.includes("bathroom") || label.includes("bath")) {
+      return <Bath size={28} className="pd-amenity-icon" />;
+    }
+    if (label.includes("area") || label.includes("sq ft") || label.includes("sqft")) {
+      return <Square size={28} className="pd-amenity-icon" />;
+    }
+    if (label.includes("parking")) {
+      return <CarFront size={28} className="pd-amenity-icon" />;
+    }
+    if (label.includes("balcony")) {
+      return <DoorOpen size={28} className="pd-amenity-icon" />;
+    }
+    if (label.includes("furnished")) {
+      return <Sofa size={28} className="pd-amenity-icon" />;
+    }
+    if (label.includes("status")) {
+      return <CheckCircle2 size={28} className="pd-amenity-icon" />;
+    }
+    if (label.includes("listing type") || label.includes("type:")) {
+      return <ClipboardList size={28} className="pd-amenity-icon" />;
+    }
+
+    return <CheckCircle2 size={28} className="pd-amenity-icon" />;
+  };
+
+  const formattedPrice =
+    typeof property.price === "number"
+      ? property.price.toLocaleString("en-IN")
+      : property.price;
+
   return (
     <div className="dashboard-container dark-theme">
+      {isFullscreen && (
+        <div className="pd-fullscreen-overlay" onClick={() => setIsFullscreen(false)}>
+          <button
+            type="button"
+            className="pd-fullscreen-close"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsFullscreen(false);
+            }}
+          >
+            <X size={24} />
+          </button>
+          <div
+            className="pd-fullscreen-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={images[activeImageIndex]}
+              alt={property.title}
+              className="pd-fullscreen-image"
+            />
+            {images.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  className="pd-fullscreen-nav prev"
+                  onClick={prevImage}
+                >
+                  <ChevronLeft size={28} />
+                </button>
+                <button
+                  type="button"
+                  className="pd-fullscreen-nav next"
+                  onClick={nextImage}
+                >
+                  <ChevronRight size={28} />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       <aside className={`dashboard-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
@@ -529,7 +622,7 @@ const PropertyDetailsPage = () => {
               <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
             </Link>
             <nav className="header-links">
-              <Link to="/dashboard" className="header-link">Home</Link>
+              <Link to="/dashboard" className="header-link">Dashboard</Link>
               <Link to="/properties" className="header-link">Properties</Link>
               <Link to="/contact" className="header-link">Contact</Link>
               <Link to="/about" className="header-link">About Us</Link>
@@ -570,6 +663,9 @@ const PropertyDetailsPage = () => {
                 <span className="user-role">User</span>
               </div>
             </div>
+            <button onClick={handleSignOut} className="icon-btn" title="Sign Out">
+              <Icons.LogOut />
+            </button>
           </div>
         </header>
 
@@ -592,12 +688,28 @@ const PropertyDetailsPage = () => {
               </button>
             </div>
 
-            <div className="pd-gallery-split-container" style={{ display: 'flex', gap: '20px', height: showMap ? '500px' : 'auto', transition: 'all 0.3s ease' }}>
-              <div className="pd-main-image-wrapper" style={{ width: showMap ? '50%' : '100%', height: showMap ? '100%' : '60vh', transition: 'all 0.3s ease' }}>
+            <div className="pd-title-section fade-up">
+              <div className="pd-title-section-left">
+                <div className="pd-location-badge">
+                  <MapPin size={16} />
+                  {property.location}
+                </div>
+                <h1 className="pd-title">{property.title}</h1>
+              </div>
+              <div className="pd-price">
+                ₹{formattedPrice}
+                {property.type === 'rent' && <span className="pd-period">/month</span>}
+              </div>
+            </div>
+
+            <div className="pd-gallery-split-container" style={{ display: 'flex', gap: '16px', minHeight: '45vh', transition: 'all 0.3s ease', alignItems: 'stretch' }}>
+              <div className="pd-main-image-column" style={{ flex: '0 0 70%', display: 'flex', flexDirection: 'column' }}>
+                <div className="pd-main-image-wrapper">
                 <img 
                   src={images[activeImageIndex]} 
                   alt={property.title} 
                   className="pd-main-image"
+                  onClick={() => setIsFullscreen(true)}
                 />
                 
                 {images.length > 1 && !showMap && (
@@ -611,137 +723,258 @@ const PropertyDetailsPage = () => {
                   </>
                 )}
 
-                <div className="pd-image-overlay">
-                  <div className="pd-actions-overlay" style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', gap: '12px' }}>
-                    <button 
-                      className={`pd-action-button ${isFavorite ? 'active' : ''}`}
-                      onClick={toggleFavorite}
-                      disabled={favoriteLoading}
-                      style={{width: '48px', height: '48px', background: 'rgba(255, 255, 255, 0.9)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', opacity: favoriteLoading ? 0.7 : 1}}
-                      title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
-                    >
-                      <Heart size={24} fill={isFavorite ? "#ef4444" : "none"} color={isFavorite ? "#ef4444" : "#333"} />
-                    </button>
-                    <button 
-                      className="pd-action-button" 
-                      onClick={handleShare} 
-                      style={{width: '48px', height: '48px', background: 'rgba(255, 255, 255, 0.9)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)'}}
-                      title="Share Property"
-                    >
-                      <Share2 size={24} color="#333" />
-                    </button>
-                  </div>
-                  <div className="pd-status-badge">
-                    {property.type === 'sale' ? 'For Sale' : 'For Rent'}
+                  <div className="pd-image-overlay">
+                    <div className="pd-actions-overlay" style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', gap: '12px' }}>
+                      <button 
+                        className={`pd-action-button ${isFavorite ? 'active' : ''}`}
+                        onClick={toggleFavorite}
+                        disabled={favoriteLoading}
+                        style={{width: '48px', height: '48px', background: 'rgba(255, 255, 255, 0.9)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', opacity: favoriteLoading ? 0.7 : 1}}
+                        title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+                      >
+                        <Heart size={24} fill={isFavorite ? "#ef4444" : "none"} color={isFavorite ? "#ef4444" : "#333"} />
+                      </button>
+                      <button 
+                        className="pd-action-button" 
+                        onClick={handleShare} 
+                        style={{width: '48px', height: '48px', background: 'rgba(255, 255, 255, 0.9)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)'}}
+                        title="Share Property"
+                      >
+                        <Share2 size={24} color="#333" />
+                      </button>
+                    </div>
+                    <div className="pd-status-badge">
+                      {property.type === 'sale' ? 'For Sale' : 'For Rent'}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {showMap && (
-                <div className="pd-map-wrapper" style={{ width: '50%', height: '100%', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--pd-border)', position: 'relative', zIndex: 1 }}>
-                  <MapContainer 
-                    center={[property.lat || 20.5937, property.lng || 78.9629]} 
-                    zoom={13} 
-                    style={{ height: '100%', width: '100%' }}
-                  >
-                    <TileLayer
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    />
-                    <Marker position={[property.lat || 20.5937, property.lng || 78.9629]}>
-                      <Popup>
-                        <div style={{ color: '#000' }}>
-                          <strong>{property.title}</strong><br/>
-                          {property.location}
+                {images.length > 1 && !showMap && (
+                  <div className="pd-thumbnails-scroll">
+                    <div className="pd-thumbnails">
+                      {images.slice(0, maxThumbnailCount).map((img, index) => (
+                        <button
+                          key={index}
+                          className={`pd-thumbnail ${index === activeImageIndex ? 'active' : ''}`}
+                          onClick={() => setActiveImageIndex(index)}
+                        >
+                          <img src={img} alt={`View ${index + 1}`} />
+                        </button>
+                      ))}
+                      {extraThumbnailCount > 0 && (
+                        <button
+                          type="button"
+                          className="pd-thumbnail pd-thumbnail-more"
+                          onClick={() => setIsFullscreen(true)}
+                        >
+                          +{extraThumbnailCount} more
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="pd-booking-column" style={{ flex: '0 0 26%', display: 'flex' }}>
+                {showMap ? (
+                  <div className="pd-map-wrapper" style={{ width: '100%', height: '100%', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--pd-border)', position: 'relative', zIndex: 1 }}>
+                    <MapContainer 
+                      center={[property.lat || 20.5937, property.lng || 78.9629]} 
+                      zoom={13} 
+                      style={{ height: '100%', width: '100%' }}
+                    >
+                      <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      />
+                      <Marker position={[property.lat || 20.5937, property.lng || 78.9629]}>
+                        <Popup>
+                          <div style={{ color: '#000' }}>
+                            <strong>{property.title}</strong><br/>
+                            {property.location}
+                          </div>
+                        </Popup>
+                      </Marker>
+                    </MapContainer>
+                  </div>
+                ) : (
+                  <div className="pd-booking-card fade-up" style={{ animationDelay: '0.2s', width: '100%' }}>
+                    <h3 className="pd-booking-title">Book a Visit</h3>
+                    <p className="pd-booking-subtitle">Request a visit for this property.</p>
+                    
+                    <form onSubmit={handleBookViewing} className="pd-booking-form">
+                      <div className="pd-input-group">
+                        <div className="pd-input-icon"><Phone size={18} /></div>
+                        <input
+                          type="tel"
+                          placeholder="Phone Number"
+                          value={bookingForm.phone}
+                          onChange={(e) => setBookingForm({...bookingForm, phone: e.target.value})}
+                          required
+                          className="pd-input"
+                        />
+                      </div>
+
+                      <div className="pd-dates-section" style={{ marginBottom: '24px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                          <span style={{ fontSize: '0.95rem', color: 'var(--pd-text-primary)', fontWeight: '600', letterSpacing: '0.3px' }}>
+                            {constraints.isNearExpiry ? 'Preferred Dates' : '4 Preferred Dates'}
+                          </span>
+                          {constraints.isNearExpiry && (
+                            <span style={{ 
+                              fontSize: '0.7rem', 
+                              padding: '2px 8px', 
+                              background: 'rgba(239, 68, 68, 0.1)', 
+                              color: '#ef4444', 
+                              borderRadius: '12px',
+                              border: '1px solid rgba(239, 68, 68, 0.2)',
+                            }}>
+                              Expiry Soon: Flexibility Enabled
+                            </span>
+                          )}
+                          <span style={{ 
+                            fontSize: '0.8rem', 
+                            color: (constraints.isNearExpiry ? bookingForm.slots.length >= 1 : bookingForm.slots.length === 4) ? 'var(--pd-accent-gold-bright)' : 'var(--pd-danger)', 
+                            fontWeight: '700',
+                            background: (constraints.isNearExpiry ? bookingForm.slots.length >= 1 : bookingForm.slots.length === 4) ? 'rgba(251, 191, 36, 0.1)' : 'rgba(239, 68, 68, 0.05)',
+                            padding: '4px 10px',
+                            borderRadius: '20px',
+                            transition: 'all 0.3s',
+                            marginLeft: 'auto'
+                          }}>
+                            {bookingForm.slots.length}{!constraints.isNearExpiry && '/4'} Selected
+                          </span>
                         </div>
-                      </Popup>
-                    </Marker>
-                  </MapContainer>
-                </div>
-              )}
+                        <div className="pd-calendar-trigger-row">
+                          <button
+                            type="button"
+                            className="pd-calendar-open-button"
+                            onClick={() => setIsCalendarOpen(true)}
+                          >
+                            <CalendarIcon size={16} />
+                            Add Appointment Slot
+                          </button>
+                          <span className="pd-calendar-hint">
+                            Select up to 4 preferred date & time slots
+                          </span>
+                        </div>
+
+                        <div className="pd-calendar-availability">
+                          <CalendarIcon size={14} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
+                          Appointments available between <strong>{new Date(minSelectableDate).toLocaleDateString()}</strong> and <strong>{new Date(maxSelectableDate).toLocaleDateString()}</strong>
+                        </div>
+
+                        {bookingForm.slots.length > 0 && (
+                          <div className="pd-selected-dates-preview">
+                            <div style={{ 
+                              textAlign: 'center',
+                              fontSize: '0.85rem', 
+                              color: 'var(--pd-text-secondary)', 
+                              marginBottom: '20px', 
+                              fontWeight: '600',
+                              textTransform: 'uppercase',
+                              letterSpacing: '1px'
+                            }}>
+                              Selected Appointment Options:
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {bookingForm.slots.map((slot, i) => (
+                                <div key={i} className="pd-selected-date-badge" style={{ justifyContent: 'space-between', padding: '12px 16px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <CalendarIcon size={16} color="var(--pd-accent-gold)" />
+                                      <span style={{ fontWeight: '600' }}>
+                                        {new Date(slot.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      </span>
+                                    </div>
+                                    <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)' }}></div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <Icons.Clock size={16} color="var(--pd-accent-gold)" />
+                                      <span style={{ fontWeight: '600' }}>{slot.time}</span>
+                                    </div>
+                                  </div>
+                                  <button 
+                                    type="button" 
+                                    onClick={() => removeSlot(i)}
+                                    className="pd-remove-date"
+                                    style={{ marginLeft: '12px' }}
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <textarea
+                        placeholder="I am interested in this property..."
+                        value={bookingForm.message}
+                        onChange={(e) => setBookingForm({...bookingForm, message: e.target.value})}
+                        className="pd-textarea"
+                        rows="4"
+                      ></textarea>
+
+                      <button type="submit" className="pd-submit-button">
+                        Book a Visit
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {images.length > 1 && !showMap && (
-              <div className="pd-thumbnails-scroll">
-                <div className="pd-thumbnails">
-                  {images.map((img, index) => (
-                    <button
-                      key={index}
-                      className={`pd-thumbnail ${index === activeImageIndex ? 'active' : ''}`}
-                      onClick={() => setActiveImageIndex(index)}
-                    >
-                      <img src={img} alt={`View ${index + 1}`} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </section>
 
           <div className="pd-content-grid">
             {/* Left Column: Property Details */}
             <div className="pd-details-column">
-              <div className="pd-title-section fade-up">
-                <div className="pd-location-badge">
-                  <MapPin size={16} />
-                  {property.location}
-                </div>
-                <h1 className="pd-title">{property.title}</h1>
-                <div className="pd-price">
-                  {typeof property.price === 'number' 
-                    ? `$${property.price.toLocaleString()}` 
-                    : property.price}
-                  {property.type === 'rent' && <span className="pd-period">/month</span>}
-                </div>
-              </div>
 
               <div className="pd-metrics-grid fade-up" style={{animationDelay: '0.1s'}}>
                 <div className="pd-metric-card">
-                  <BedDouble size={24} />
+                  <BedDouble size={28} />
                   <div className="pd-metric-info">
                     <span className="label">Bedrooms</span>
                     <span className="value">{property.bedrooms}</span>
                   </div>
                 </div>
                 <div className="pd-metric-card">
-                  <Bath size={24} />
+                  <Bath size={28} />
                   <div className="pd-metric-info">
                     <span className="label">Bathrooms</span>
                     <span className="value">{property.bathrooms || 2}</span>
                   </div>
                 </div>
                 <div className="pd-metric-card">
-                  <Square size={24} />
+                  <Square size={28} />
                   <div className="pd-metric-info">
                     <span className="label">Area</span>
-                    <span className="value">{property.sqft || '2,500'} sq ft</span>
+                    <span className="value">
+                      {property.area ? `${property.area} sq ft` : "N/A"}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="pd-section fade-up" style={{animationDelay: '0.2s'}}>
+              <div className="pd-section pd-description-column fade-up" style={{animationDelay: '0.2s'}}>
                 <h2 className="pd-section-title">Description</h2>
                 <p className="pd-description">
                   {property.description}
                 </p>
               </div>
 
-              {/* Dynamic Amenities */}
-              <div className="pd-section fade-up" style={{animationDelay: '0.3s'}}>
+              <div className="pd-section pd-amenities-column fade-up" style={{animationDelay: '0.3s'}}>
                 <h2 className="pd-section-title">Features & Amenities</h2>
                 <div className="pd-amenities-grid">
-                  {[
-                    property.furnished && property.furnished !== 'Unfurnished' ? `${property.furnished} Furnished` : null,
-                    ...(property.amenities || [])
-                  ].filter(Boolean).map((amenity, index) => (
+                  {featureItems.map((amenity, index) => (
                     <div key={index} className="pd-amenity-item">
-                      <CheckCircle2 size={16} className="pd-amenity-icon" />
+                      {getAmenityIcon(amenity)}
                       <span>{amenity}</span>
                     </div>
                   ))}
                   
-                  {/* Fallback if no amenities listed to avoid empty section */}
-                  {(!property.amenities || property.amenities.length === 0) && !property.furnished && (
+                  {featureItems.length === 0 && (
                     <p className="pd-no-data-text">Contact agent for full amenity list.</p>
                   )}
                 </div>
@@ -757,194 +990,137 @@ const PropertyDetailsPage = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
 
-            {/* Right Column: Booking Form */}
-            <div className="pd-sidebar-column">
-              <div className="pd-booking-card fade-up" style={{animationDelay: '0.5s'}}>
-                <h3 className="pd-booking-title">Book a Viewing</h3>
-                <p className="pd-booking-subtitle">Interested in this property? Schedule a private tour.</p>
-                
-                <form onSubmit={handleBookViewing} className="pd-booking-form">
-                  <div className="pd-input-group">
-                    <div className="pd-input-icon"><User size={18} /></div>
-                    <input
-                      type="text"
-                      placeholder="Your Name"
-                      value={bookingForm.name}
-                      onChange={(e) => setBookingForm({...bookingForm, name: e.target.value})}
-                      required
-                      className="pd-input"
-                      readOnly={!!user}
-                      style={user ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', cursor: 'not-allowed' } : {}}
-                    />
-                  </div>
-                  
-                  <div className="pd-input-group">
-                    <div className="pd-input-icon"><Mail size={18} /></div>
-                    <input
-                      type="email"
-                      placeholder="Email Address"
-                      value={bookingForm.email}
-                      onChange={(e) => setBookingForm({...bookingForm, email: e.target.value})}
-                      required
-                      className="pd-input"
-                      readOnly={!!user}
-                      style={user ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', cursor: 'not-allowed' } : {}}
-                    />
-                  </div>
+        {isCalendarOpen && (
+          <div
+            className="pd-calendar-modal-backdrop"
+            onClick={() => {
+              setIsCalendarOpen(false);
+              setSelectedDateForTime(null);
+            }}
+          >
+            <div
+              className="pd-calendar-modal"
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: '450px' }}
+            >
+              <div className="pd-calendar-modal-header">
+                <div>
+                  <h3 style={{ margin: 0 }}>Add Appointment Slot</h3>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--pd-text-secondary)' }}>
+                    Option {bookingForm.slots.length + 1} of 4
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="pd-calendar-close-button"
+                  onClick={() => {
+                    setIsCalendarOpen(false);
+                    setSelectedDateForTime(null);
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
-                  <div className="pd-input-group">
-                    <div className="pd-input-icon"><Phone size={18} /></div>
-                    <input
-                      type="tel"
-                      placeholder="Phone Number"
-                      value={bookingForm.phone}
-                      onChange={(e) => setBookingForm({...bookingForm, phone: e.target.value})}
-                      required
-                      className="pd-input"
-                    />
-                  </div>
-
-                  <div className="pd-dates-section" style={{ marginBottom: '24px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                      <span style={{ fontSize: '0.95rem', color: 'var(--pd-text-primary)', fontWeight: '600', letterSpacing: '0.3px' }}>
-                        {constraints.isNearExpiry ? 'Preferred Dates' : '4 Preferred Dates'}
-                      </span>
-                      {constraints.isNearExpiry && (
-                        <span style={{ 
-                          fontSize: '0.7rem', 
-                          padding: '2px 8px', 
-                          background: 'rgba(239, 68, 68, 0.1)', 
-                          color: '#ef4444', 
-                          borderRadius: '12px',
-                          border: '1px solid rgba(239, 68, 68, 0.2)',
-                        }}>
-                          Expiry Soon: Flexibility Enabled
-                        </span>
-                      )}
-                      <span style={{ 
-                        fontSize: '0.8rem', 
-                        color: (constraints.isNearExpiry ? bookingForm.dates.length >= 1 : bookingForm.dates.length === 4) ? 'var(--pd-accent-gold-bright)' : 'var(--pd-danger)', 
-                        fontWeight: '700',
-                        background: (constraints.isNearExpiry ? bookingForm.dates.length >= 1 : bookingForm.dates.length === 4) ? 'rgba(251, 191, 36, 0.1)' : 'rgba(239, 68, 68, 0.05)',
-                        padding: '4px 10px',
-                        borderRadius: '20px',
-                        transition: 'all 0.3s',
-                        marginLeft: 'auto'
-                      }}>
-                        {bookingForm.dates.length}{!constraints.isNearExpiry && '/4'} Selected
-                      </span>
+              <div className="pd-calendar-container" style={{ padding: '20px' }}>
+                {!selectedDateForTime ? (
+                  <>
+                    <div style={{ marginBottom: '15px', fontSize: '0.9rem', fontWeight: '600', color: 'var(--pd-accent-gold)' }}>
+                      Step 1: Select a Date
                     </div>
-                    {property && (
-                      <div style={{ 
-                        fontSize: '0.8rem', 
-                        color: 'var(--pd-accent-gold-bright)', 
-                        marginBottom: '16px', 
-                        padding: '12px 16px', 
-                        background: 'rgba(251, 191, 36, 0.05)', 
-                        borderRadius: '12px',
-                        border: '1px solid rgba(251, 191, 36, 0.1)',
-                        lineHeight: '1.4'
-                      }}>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                          <CheckCircle2 size={16} style={{ marginTop: '2px', flexShrink: 0 }} />
-                          <span>
-                            {constraints.isFlexible ? (
-                              <>The original <strong>{constraints.days}-day</strong> booking period has ended, but you can still request a viewing for any date in the next <strong>60 days</strong>. You can select <strong>any number of dates</strong>.</>
-                            ) : constraints.isNearExpiry ? (
-                              <>This property expires in <strong>{constraints.daysLeft} days</strong>. Since it's closing soon, you can select <strong>any number of dates</strong> instead of 4.</>
-                            ) : (
-                              <>This <strong>{property.packageName || 'Silver'}</strong> property was posted on <strong>{new Date(property.createdAt).toLocaleDateString()}</strong>. Appointments are allowed within <strong>{constraints.days} days</strong> of posting.</>
-                            )}
-                          </span>
+                    <Calendar
+                      onChange={handleDateChange}
+                      minDate={new Date(minSelectableDate)}
+                      maxDate={new Date(maxSelectableDate)}
+                      className="pd-custom-calendar"
+                      tileClassName={({ date, view }) => {
+                        if (view === 'month') {
+                          const dateStr = date.toISOString().split('T')[0];
+                          if (bookingForm.slots.some(s => s.date === dateStr)) {
+                            return 'selected-date-tile';
+                          }
+                        }
+                        return null;
+                      }}
+                    />
+                  </>
+                ) : (
+                  <div className="pd-time-picker-step fade-in">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                      <button 
+                        onClick={() => setSelectedDateForTime(null)}
+                        style={{ background: 'none', border: 'none', color: 'var(--pd-accent-gold)', cursor: 'pointer', padding: 0 }}
+                      >
+                        <ArrowLeft size={20} />
+                      </button>
+                      <div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--pd-accent-gold)' }}>
+                          Step 2: Select Time for {selectedDateForTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </div>
                       </div>
-                    )}
-
-                    <div className="pd-calendar-container" style={{ marginBottom: '20px' }}>
-                      <Calendar 
-                        onChange={handleDateChange}
-                        minDate={new Date(minSelectableDate)}
-                        maxDate={new Date(maxSelectableDate)}
-                        className="pd-custom-calendar"
-                        tileClassName={({ date, view }) => {
-                          if (view === 'month') {
-                            const dateStr = date.toISOString().split('T')[0];
-                            if (bookingForm.dates.includes(dateStr)) {
-                              return 'selected-date-tile';
-                            }
-                          }
-                          return null;
-                        }}
-                      />
                     </div>
 
                     <div style={{ 
-                      marginTop: '15px', 
-                      padding: '12px', 
-                      background: 'rgba(251, 191, 36, 0.05)', 
-                      borderRadius: '10px',
-                      border: '1px solid rgba(251, 191, 36, 0.1)',
-                      fontSize: '0.8rem',
-                      color: 'var(--pd-accent-gold-bright)',
-                      textAlign: 'center'
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(3, 1fr)', 
+                      gap: '10px',
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      padding: '4px'
                     }}>
-                      <CalendarIcon size={14} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-                      Appointments available between <strong>{new Date(minSelectableDate).toLocaleDateString()}</strong> and <strong>{new Date(maxSelectableDate).toLocaleDateString()}</strong>
+                      {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map((time) => (
+                        <button
+                          key={time}
+                          type="button"
+                          onClick={() => handleTimeSlotSelect(time)}
+                          style={{
+                            padding: '12px 8px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--pd-border)',
+                            background: 'rgba(255,255,255,0.03)',
+                            color: 'var(--pd-text-primary)',
+                            fontSize: '0.9rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.borderColor = 'var(--pd-accent-gold)';
+                            e.target.style.background = 'rgba(217, 119, 6, 0.05)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.borderColor = 'var(--pd-border)';
+                            e.target.style.background = 'rgba(255,255,255,0.03)';
+                          }}
+                        >
+                          {time}
+                        </button>
+                      ))}
                     </div>
-
-                    {bookingForm.dates.length > 0 && (
-                      <div className="pd-selected-dates-preview">
-                        <div style={{ 
-                          textAlign: 'center',
-                          fontSize: '0.85rem', 
-                          color: 'var(--pd-text-secondary)', 
-                          marginBottom: '20px', 
-                          fontWeight: '600',
-                          textTransform: 'uppercase',
-                          letterSpacing: '1px'
-                        }}>
-                          Selected Dates:
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
-                          {bookingForm.dates.map((d, i) => (
-                            <div key={i} className="pd-selected-date-badge">
-                              <CalendarIcon size={16} />
-                              <span style={{ fontWeight: '600' }}>
-                                {new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                              </span>
-                              <button 
-                                type="button" 
-                                onClick={() => handleDateChange(new Date(d))}
-                                className="pd-remove-date"
-                                title="Remove date"
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
+                )}
+              </div>
 
-                  <textarea
-                    placeholder="I am interested in this property..."
-                    value={bookingForm.message}
-                    onChange={(e) => setBookingForm({...bookingForm, message: e.target.value})}
-                    className="pd-textarea"
-                    rows="4"
-                  ></textarea>
-
-                  <button type="submit" className="pd-submit-button">
-                    Request Viewing
-                  </button>
-                </form>
+              <div className="pd-calendar-modal-footer">
+                <div style={{ fontSize: '0.85rem', color: 'var(--pd-text-secondary)' }}>
+                  {bookingForm.slots.length} of 4 slots added
+                </div>
+                <button
+                  type="button"
+                  className="pd-submit-button"
+                  style={{ width: 'auto', padding: '10px 24px' }}
+                  onClick={() => setIsCalendarOpen(false)}
+                >
+                  Done
+                </button>
               </div>
             </div>
           </div>
-        </div>
-        
+        )}
+
         <Footer />
       </main>
     </div>

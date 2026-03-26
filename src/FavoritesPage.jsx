@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { supabase } from "./supabase";
+import { getArray } from "./utils/properties.js";
 import "./App.css";
 import "./Dashboard.css";
 
@@ -523,7 +524,7 @@ export default function FavoritesPage() {
               <span style={{ marginLeft: "8px", fontWeight: 800 }}>Elite Nest</span>
             </Link>
             <nav className="header-links">
-              <Link to="/dashboard" className="header-link">Home</Link>
+              <Link to="/dashboard" className="header-link">Dashboard</Link>
               <Link to="/properties" className="header-link">Properties</Link>
               <Link to="/contact" className="header-link">Contact</Link>
               <Link to="/about" className="header-link">About Us</Link>
@@ -575,21 +576,8 @@ export default function FavoritesPage() {
         </header>
 
         <div className="dashboard-page-content">
-          
-          {/* Stats Grid */}
-          <div className="stats-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-            {stats.map((stat, index) => (
-              <div key={index} className="stat-card">
-                <div className="stat-icon">
-                  <stat.icon />
-                </div>
-                <div className="stat-label">{stat.label}</div>
-                <div className="stat-value">{stat.value}</div>
-              </div>
-            ))}
-          </div>
 
-          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '20px' }}>
+          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '20px' }}>
             <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
               <h1 className="page-title" style={{ margin: 0 }}>
                 {activeTab === 'appointments' ? 'Appointment History' : 'Saved Properties'}
@@ -664,6 +652,19 @@ export default function FavoritesPage() {
             )}
           </div>
 
+          {/* Stats Grid */}
+          <div className="stats-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+            {stats.map((stat, index) => (
+              <div key={index} className="stat-card">
+                <div className="stat-icon">
+                  <stat.icon />
+                </div>
+                <div className="stat-label">{stat.label}</div>
+                <div className="stat-value">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+
           {activeTab === 'appointments' ? (
             /* Appointment Grid */
             appointments.length === 0 ? (
@@ -719,32 +720,22 @@ export default function FavoritesPage() {
                  </button>
               </div>
             ) : (
-              <div className="active-listings-grid">
+              <div style={{ padding: "24px" }}>
+                <div className="active-listings-grid">
                 {filteredAppointments.map((apt) => {
                   const property = apt.properties || {};
                   const title = property.title || apt.property_title || "Property Appointment";
                   
-                  // Robust Image Selection Logic
                   let image = null;
-
-                  // Helper to safely extract array from various formats
-                  const getArray = (val) => {
-                      if (Array.isArray(val)) return val;
-                      if (typeof val === 'string') {
-                          try {
-                              const parsed = JSON.parse(val);
-                              if (Array.isArray(parsed)) return parsed;
-                          } catch (e) {
-                              if (val.includes(',')) return val.split(',').map(s => s.trim());
-                          }
-                          return [val];
-                      }
-                      return [];
-                  };
 
                   const image_urls = getArray(property.image_urls);
                   const photos = getArray(property.photos);
-                  image = image_urls[0] || photos[0] || null;
+                  image = image_urls[0] 
+                    || photos[0] 
+                    || apt.property_image 
+                    || apt.property_img 
+                    || apt.img 
+                    || null;
 
                   const location = property.city || property.address || apt.property_location || "Location not specified";
                   const date = apt.appointment_date || new Date().toISOString().split('T')[0];
@@ -852,7 +843,7 @@ export default function FavoritesPage() {
                          
                          <div className="pch-actions">
                            {property.id && (
-                               <Link to={`/properties/${property.id}`} className="btn-view">
+                               <Link to={`/properties/${property.id}`} state={{ property }} className="btn-view">
                                   <Icons.Home /> VIEW PROPERTY
                                </Link>
                            )}
@@ -876,10 +867,11 @@ export default function FavoritesPage() {
                            )}
                          </div>
                        </div>
-                     </div>
-                   );
-                 })}
+                    </div>
+                  );
+                })}
                </div>
+              </div>
              )
            ) : (
              /* Saved Properties Grid */
@@ -909,37 +901,24 @@ export default function FavoritesPage() {
                    </button>
                  </Link>
                </div>
-             ) : (
-               <div className="active-listings-grid">
+            ) : (
+              <div style={{ padding: "24px" }}>
+                <div className="active-listings-grid">
                  {savedProperties.map((property) => {
-                   const title = property.title || "Property";
-                   
-                   const getArray = (val) => {
-                       if (Array.isArray(val)) return val;
-                       if (typeof val === 'string') {
-                           try {
-                               const parsed = JSON.parse(val);
-                               if (Array.isArray(parsed)) return parsed;
-                           } catch (e) {
-                               if (val.includes(',')) return val.split(',').map(s => s.trim());
-                           }
-                           return [val];
-                       }
-                       return [];
-                   };
- 
+                  const title = property.title || "Property";
                    const image_urls = getArray(property.image_urls);
                    const photos = getArray(property.photos);
                    const image = image_urls[0] || photos[0] || null;
                    const location = property.city || property.address || "Location not specified";
  
                    return (
-                     <div key={property.id} className="property-card-horizontal">
+                    <div key={property.id} className="property-card-horizontal">
                        <div className="pch-image-container">
                          <ImageWithFallback 
                            src={image} 
                            alt={title} 
                            linkTo={`/properties/${property.id}`} 
+                           state={{ property }}
                          />
                        </div>
                        <div className="pch-content">
@@ -970,7 +949,7 @@ export default function FavoritesPage() {
                          </div>
                          
                          <div className="pch-actions" style={{ marginTop: '20px' }}>
-                           <Link to={`/properties/${property.id}`} className="btn-view">
+                           <Link to={`/properties/${property.id}`} state={{ property }} className="btn-view">
                               <Icons.Home /> VIEW DETAILS
                            </Link>
                            
@@ -983,10 +962,11 @@ export default function FavoritesPage() {
                            </button>
                          </div>
                        </div>
-                     </div>
-                   );
-                 })}
+                    </div>
+                  );
+                })}
                </div>
+              </div>
              )
            )}
         </div>
@@ -1030,10 +1010,24 @@ export default function FavoritesPage() {
               <div style={{ padding: '24px', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', gap: '20px', marginBottom: '24px' }}>
                   <div style={{ width: '120px', height: '120px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0 }}>
-                    <ImageWithFallback 
-                      src={selectedAppointment.properties?.image_urls?.[0] || selectedAppointment.properties?.photos?.[0]} 
-                      alt="Property" 
-                    />
+                    {(() => {
+                      const prop = selectedAppointment.properties || {};
+                      const imageUrls = getArray(prop.image_urls);
+                      const photos = getArray(prop.photos);
+                      const modalImage =
+                        imageUrls[0] ||
+                        photos[0] ||
+                        selectedAppointment.property_image ||
+                        selectedAppointment.property_img ||
+                        selectedAppointment.img ||
+                        null;
+                      return (
+                        <ImageWithFallback 
+                          src={modalImage}
+                          alt="Property" 
+                        />
+                      );
+                    })()}
                   </div>
                   <div>
                     <h3 style={{ margin: '0 0 8px 0' }}>{selectedAppointment.properties?.title || selectedAppointment.property_title}</h3>
