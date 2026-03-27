@@ -1,5 +1,5 @@
 import React from "react";
-import { supabase } from "../supabase.js";
+import { supabase } from "../admin-supabase.js";
 import emailjs from "@emailjs/browser";
 export { default as PropertiesTab } from "./AdminProperties";
 export { default as AppointmentsTab } from "./AdminAppointments";

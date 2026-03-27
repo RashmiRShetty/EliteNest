@@ -173,7 +173,7 @@ export default function Dashboard() {
 
   const handleSignOut = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
 
     if (!error) navigate("/", { replace: true });
     else setLoading(false);

@@ -1,12 +1,23 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../supabase.js";
+import { supabase } from "../admin-supabase.js";
 
 export default function AdminLanding() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ email: "", password: "" });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate("/admin/dashboard", { replace: true });
+      }
+      setLoading(false);
+    };
+    checkSession();
+  }, [navigate]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -37,6 +48,14 @@ export default function AdminLanding() {
       setLoading(false);
     }
   };
+
+  if (loading && !formData.email) {
+    return (
+      <div style={styles.container}>
+        <div style={{ color: "white" }}>Loading Admin Portal...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>

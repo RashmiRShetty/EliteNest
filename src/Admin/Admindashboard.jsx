@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { supabase } from "../supabase.js";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../admin-supabase.js";
 import { getArray } from "../utils/properties.js";
 import EditPropertyModal from "../components/EditPropertyModal";
 import emailjs from "@emailjs/browser";
@@ -9,7 +10,9 @@ import { UsersTab, PropertiesTab, SellersTab, LeasesTab, RentalsTab, Appointment
 import { SERVICE_ID, TEMPLATE_ID, PUBLIC_KEY } from "./AdminEmailConfig";
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
+  const [authLoading, setAuthLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [properties, setProperties] = useState([]);
   const [sellers, setSellers] = useState([]);
@@ -26,8 +29,20 @@ export default function AdminDashboard() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
 
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate("/admin", { replace: true });
+      } else {
+        setAuthLoading(false);
+      }
+    };
+    checkAuth();
+  }, [navigate]);
 
   useEffect(() => {
+    if (authLoading) return;
     console.log("AdminDashboard activeTab changed to:", activeTab);
     if (activeTab === "users") fetchUsers();
     if (activeTab === "properties") fetchProperties();
@@ -40,10 +55,11 @@ export default function AdminDashboard() {
     }
     if (activeTab === "payments") fetchPayments();
     if (activeTab === "feedback") fetchFeedback();
-  }, [activeTab]);
+  }, [activeTab, authLoading]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    // Sign out ONLY from the local admin session to avoid logging out regular user dashboard
+    await supabase.auth.signOut({ scope: 'local' });
     window.location.href = "/admin";
   };
   const updateStatus = async (propertyId, newStatus) => {
@@ -540,6 +556,14 @@ export default function AdminDashboard() {
       alert("Error deleting feedback");
     }
   };
+
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#020617", color: "white" }}>
+        Loading Admin Dashboard...
+      </div>
+    );
+  }
 
   return (
     <div

@@ -20,7 +20,7 @@ export default function EmailVerificationPage() {
           if (event === "SIGNED_IN" && session?.user) {
             setMessage("Email verified successfully! Redirecting to login...");
             // Sign out so user logs in with password after verification
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: 'local' });
             setTimeout(() => navigate("/login"), 1500);
           }
         }
@@ -41,7 +41,7 @@ export default function EmailVerificationPage() {
         }
         if (data?.user) {
           setMessage("Email verified successfully! Redirecting to login...");
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: 'local' });
           setTimeout(() => navigate("/login"), 1500);
         }
       })

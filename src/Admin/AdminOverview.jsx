@@ -1,5 +1,5 @@
 import React from "react";
-import { supabase } from "../supabase.js";
+import { supabase } from "../admin-supabase.js";
 
 export default function Overview() {
   const [overviewData, setOverviewData] = React.useState({

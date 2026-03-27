@@ -1,5 +1,5 @@
 import React from "react";
-import { supabase } from "../supabase.js";
+import { supabase } from "../admin-supabase.js";
 import emailjs from "@emailjs/browser";
 import { SERVICE_ID, TEMPLATE_ID, PUBLIC_KEY } from "./AdminEmailConfig";
 
