@@ -126,8 +126,21 @@ export default function MyListingsPage() {
       validityDays: 15,
       features: [
         'Listed for 15 Days',
-        '5 Photos Limit',
-        'Basic Support'
+        'Validity starts after successful payment',
+'Non-refundable after activation',
+'Listing will be removed after expiry',
+'Admin approval required before posting',
+'Property details must be accurate and valid',
+'One package per property only',
+'User cannot modify package after purchase',
+'Expired listings must be reposted',
+'Admin has rights to reject inappropriate content',
+'Images must be clear and relevant to property',
+'Fake or misleading listings are not allowed',
+'Payment must be completed to activate listing',
+'Package benefits vary based on plan selected',
+'User is responsible for property information',
+'Support provided based on selected package'
       ],
       isPopular: false
     },
@@ -138,12 +151,23 @@ export default function MyListingsPage() {
       period: '',
       validityDays: 30,
       features: [
-        'Featured Badge',
-        'Top of Search Results',
+        
         'Listed for 30 Days',
-        '10 Photos Limit',
-        'Priority Support',
-        'Verified Tag'
+       'Validity starts after successful payment',
+'Non-refundable after activation',
+'Listing will be removed after expiry',
+'Admin approval required before posting',
+'Property details must be accurate and valid',
+'One package per property only',
+'User cannot modify package after purchase',
+'Expired listings must be reposted',
+'Admin has rights to reject inappropriate content',
+'Images must be clear and relevant to property',
+'Fake or misleading listings are not allowed',
+'Payment must be completed to activate listing',
+'Package benefits vary based on plan selected',
+'User is responsible for property information',
+'Support provided based on selected package'
       ],
       isPopular: true
     },
@@ -154,12 +178,23 @@ export default function MyListingsPage() {
       period: '',
       validityDays: 45,
       features: [
-        'All Gold Features',
+       
         'Listed for 45 Days',
-        'Unlimited Photos',
-        'Social Media Promotion',
-        'Email Blast to Buyers',
-        'Dedicated Agent'
+        'Validity starts after successful payment',
+'Non-refundable after activation',
+'Listing will be removed after expiry',
+'Admin approval required before posting',
+'Property details must be accurate and valid',
+'One package per property only',
+'User cannot modify package after purchase',
+'Expired listings must be reposted',
+'Admin has rights to reject inappropriate content',
+'Images must be clear and relevant to property',
+'Fake or misleading listings are not allowed',
+'Payment must be completed to activate listing',
+'Package benefits vary based on plan selected',
+'User is responsible for property information',
+'Support provided based on selected package'
       ],
       isPopular: false
     }
