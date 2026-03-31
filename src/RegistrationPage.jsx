@@ -8,6 +8,31 @@ import PasswordStrengthBar from "./components/PasswordStrengthBar.jsx";
 import "./Dashboard.css";
 
 // --------------------------------------------
+// VALIDATION UTILITIES
+// --------------------------------------------
+const validatePhoneNumber = (phone) => {
+  // Indian phone number format: 10 digits, optionally with +91 prefix
+  const phoneRegex = /^(\+91)?[6-9]\d{9}$/;
+  return phoneRegex.test(phone.replace(/[\s\-()]/g, ""));
+};
+
+const validatePassword = (password) => {
+  // At least 8 characters, 1 uppercase, 1 lowercase, 1 number, 1 special character
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+  return passwordRegex.test(password);
+};
+
+const getPasswordValidationErrors = (password) => {
+  const errors = [];
+  if (password.length < 8) errors.push("At least 8 characters");
+  if (!/[a-z]/.test(password)) errors.push("One lowercase letter");
+  if (!/[A-Z]/.test(password)) errors.push("One uppercase letter");
+  if (!/\d/.test(password)) errors.push("One number");
+  if (!/[@$!%*?&]/.test(password)) errors.push("One special character (@$!%*?&)");
+  return errors;
+};
+
+// --------------------------------------------
 // STEP COMPONENTS (memoized to prevent remount)
 // --------------------------------------------
 const Step1 = React.memo(function Step1({ formData, handleChange, nextStep }) {
@@ -55,17 +80,41 @@ const Step1 = React.memo(function Step1({ formData, handleChange, nextStep }) {
   );
 });
 
-const Step2 = React.memo(function Step2({ formData, handleChange, nextStep, prevStep }) {
+const Step2 = React.memo(function Step2({
+  formData,
+  handleChange,
+  nextStep,
+  prevStep,
+  phoneError,
+}) {
+  const isPhoneValid = formData.phone === "" || validatePhoneNumber(formData.phone);
+
   return (
     <>
-      <input
-        name="phone"
-        value={formData.phone}
-        onChange={handleChange}
-        placeholder="Phone Number"
-        required
-        style={styles.input}
-      />
+      <div>
+        <input
+          name="phone"
+          value={formData.phone}
+          onChange={handleChange}
+          placeholder="Phone Number (10 digits or +91XXXXXXXXXX)"
+          required
+          style={{
+            ...styles.input,
+            borderColor: phoneError ? "#ef4444" : "#ccc",
+            borderWidth: phoneError ? "2px" : "1px",
+          }}
+        />
+        {phoneError && (
+          <p style={{ color: "#ef4444", fontSize: "12px", marginTop: "4px" }}>
+            ❌ {phoneError}
+          </p>
+        )}
+        {formData.phone && isPhoneValid && (
+          <p style={{ color: "#10b981", fontSize: "12px", marginTop: "4px" }}>
+            ✅ Phone number is valid
+          </p>
+        )}
+      </div>
 
       <input
         name="address"
@@ -79,7 +128,16 @@ const Step2 = React.memo(function Step2({ formData, handleChange, nextStep, prev
         <button type="button" onClick={prevStep} style={styles.button}>
           ← Back
         </button>
-        <button type="button" onClick={nextStep} style={styles.button}>
+        <button
+          type="button"
+          onClick={nextStep}
+          disabled={!isPhoneValid || !formData.phone}
+          style={{
+            ...styles.button,
+            opacity: isPhoneValid && formData.phone ? 1 : 0.5,
+            cursor: isPhoneValid && formData.phone ? "pointer" : "not-allowed",
+          }}
+        >
           Next →
         </button>
       </div>
@@ -92,37 +150,94 @@ const Step3 = React.memo(function Step3({
   handleChange,
   prevStep,
   loading,
+  passwordErrors,
+  passwordMatchError,
 }) {
+  const isPasswordValid = validatePassword(formData.password);
+  const passwordsMatch = formData.password === formData.confirmPassword;
+  const isFormValid = isPasswordValid && passwordsMatch && formData.password;
+
   return (
     <>
-      <input
-        name="password"
-        value={formData.password}
-        onChange={handleChange}
-        placeholder="Password"
-        type="password"
-        required
-        style={styles.input}
-      />
+      <div>
+        <input
+          name="password"
+          value={formData.password}
+          onChange={handleChange}
+          placeholder="Password"
+          type="password"
+          required
+          style={{
+            ...styles.input,
+            borderColor: formData.password && !isPasswordValid ? "#ef4444" : "#ccc",
+            borderWidth: formData.password && !isPasswordValid ? "2px" : "1px",
+          }}
+        />
+
+        {formData.password && !isPasswordValid && (
+          <div style={{ marginTop: "8px", padding: "8px", backgroundColor: "#fee2e2", borderRadius: "4px", borderLeft: "4px solid #ef4444" }}>
+            <p style={{ margin: "0 0 6px 0", fontSize: "12px", fontWeight: "bold", color: "#dc2626" }}>
+              Password must contain:
+            </p>
+            <ul style={{ margin: "0", paddingLeft: "20px", fontSize: "12px" }}>
+              {passwordErrors.map((error, idx) => (
+                <li key={idx} style={{ color: "#dc2626", marginBottom: "2px" }}>
+                  {error}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {formData.password && isPasswordValid && (
+          <p style={{ color: "#10b981", fontSize: "12px", marginTop: "4px", fontWeight: "bold" }}>
+            ✅ Password is strong
+          </p>
+        )}
+      </div>
 
       <PasswordStrengthBar password={formData.password} />
 
-      <input
-        name="confirmPassword"
-        value={formData.confirmPassword}
-        onChange={handleChange}
-        placeholder="Confirm Password"
-        type="password"
-        required
-        style={styles.input}
-      />
+      <div>
+        <input
+          name="confirmPassword"
+          value={formData.confirmPassword}
+          onChange={handleChange}
+          placeholder="Confirm Password"
+          type="password"
+          required
+          style={{
+            ...styles.input,
+            borderColor: passwordMatchError ? "#ef4444" : "#ccc",
+            borderWidth: passwordMatchError ? "2px" : "1px",
+          }}
+        />
+        {passwordMatchError && (
+          <p style={{ color: "#ef4444", fontSize: "12px", marginTop: "4px" }}>
+            ❌ {passwordMatchError}
+          </p>
+        )}
+        {formData.confirmPassword && formData.password === formData.confirmPassword && formData.password && (
+          <p style={{ color: "#10b981", fontSize: "12px", marginTop: "4px" }}>
+            ✅ Passwords match
+          </p>
+        )}
+      </div>
 
       <div style={{ display: "flex", gap: "10px" }}>
         <button type="button" onClick={prevStep} style={styles.button}>
           ← Back
         </button>
 
-        <button type="submit" disabled={loading} style={styles.button}>
+        <button
+          type="submit"
+          disabled={loading || !isFormValid}
+          style={{
+            ...styles.button,
+            opacity: isFormValid && !loading ? 1 : 0.5,
+            cursor: isFormValid && !loading ? "pointer" : "not-allowed",
+          }}
+        >
           {loading ? "Signing Up..." : "Submit"}
         </button>
       </div>
@@ -160,6 +275,17 @@ export default function RegistrationPage() {
   const nextStep = () => setCurrentStep((s) => s + 1);
   const prevStep = () => setCurrentStep((s) => s - 1);
 
+  // Validation state
+  const phoneError = formData.phone && !validatePhoneNumber(formData.phone)
+    ? "Phone number must be 10 digits (6-9 start) or +91XXXXXXXXXX format"
+    : "";
+
+  const passwordErrors = getPasswordValidationErrors(formData.password);
+
+  const passwordMatchError = formData.confirmPassword && formData.password !== formData.confirmPassword
+    ? "Passwords do not match"
+    : "";
+
   // --------------------------------------------
   // EMAIL VERIFICATION POLLING WITHOUT RE-RENDER
   // --------------------------------------------
@@ -187,6 +313,17 @@ export default function RegistrationPage() {
 
     setError("");
     setSuccess("");
+
+    // Final validation checks
+    if (!validatePhoneNumber(formData.phone)) {
+      setError("Please enter a valid phone number.");
+      return;
+    }
+
+    if (!validatePassword(formData.password)) {
+      setError("Please ensure your password meets all requirements.");
+      return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match.");
@@ -305,6 +442,7 @@ export default function RegistrationPage() {
                 handleChange={handleChange}
                 nextStep={nextStep}
                 prevStep={prevStep}
+                phoneError={phoneError}
               />
             )}
 
@@ -314,6 +452,8 @@ export default function RegistrationPage() {
                 handleChange={handleChange}
                 prevStep={prevStep}
                 loading={loading}
+                passwordErrors={passwordErrors}
+                passwordMatchError={passwordMatchError}
               />
             )}
 
