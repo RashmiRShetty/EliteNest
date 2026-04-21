@@ -1,4 +1,4 @@
-# 🏠 EliteNest - House Rent & PG Management Platform
+# 🏠 EliteNest - House Buy & Sell Management Platform
 
 ![React](https://img.shields.io/badge/React-19-blue)
 ![Vite](https://img.shields.io/badge/Vite-Fast-yellow)
